@@ -9,6 +9,7 @@ import data_handler as dh
 import visualizations as viz
 import budget_tools as budget
 import utils
+import plaid_link as pl
 
 # Set page configuration
 st.set_page_config(
@@ -506,7 +507,51 @@ elif page == "Import Data":
     st.header("Import Financial Data")
     
     # Tabs for different import methods
-    import_tab, manual_tab, category_tab = st.tabs(["Import from CSV", "Manual Entry", "Manage Categories"])
+    import_tab, bank_tab, manual_tab, category_tab = st.tabs(["Import from CSV", "Connect Bank Accounts", "Manual Entry", "Manage Categories"])
+    
+    with bank_tab:
+        st.subheader("Connect Your Bank Accounts")
+        st.write("Securely connect your bank accounts to automatically import transactions.")
+        
+        # Check for Plaid API credentials
+        if os.environ.get('PLAID_CLIENT_ID') and os.environ.get('PLAID_SECRET'):
+            # Initialize Plaid Link
+            if pl.initialize_plaid():
+                # Display connected accounts
+                pl.display_connected_accounts()
+        else:
+            st.warning("Plaid API credentials are not configured.")
+            
+            # Form to enter Plaid API credentials
+            with st.form("plaid_credentials_form"):
+                st.write("Enter your Plaid API credentials to connect your bank accounts:")
+                client_id = st.text_input("Plaid Client ID", type="password")
+                secret = st.text_input("Plaid Secret", type="password")
+                
+                submit = st.form_submit_button("Save Credentials")
+                if submit and client_id and secret:
+                    os.environ['PLAID_CLIENT_ID'] = client_id
+                    os.environ['PLAID_SECRET'] = secret
+                    st.success("Credentials saved! Initializing Plaid...")
+                    st.rerun()
+                    
+            st.markdown("---")
+            st.markdown("""
+            ### How to get Plaid API credentials:
+            1. Sign up for a Plaid account at [plaid.com](https://plaid.com/)
+            2. Create a new application in the Plaid Dashboard
+            3. Get your Client ID and Secret from the dashboard
+            4. Enter them above to enable bank account connectivity
+            """)
+            
+            # Check boxes for sample API keys - these won't work but will show the integration UI
+            if st.checkbox("Use sample credentials for demonstration"):
+                st.info("Note: Sample credentials will not connect to real bank accounts.")
+                if 'plaid_demo' not in st.session_state:
+                    st.session_state.plaid_demo = True
+                    os.environ['PLAID_CLIENT_ID'] = 'demo_client_id'
+                    os.environ['PLAID_SECRET'] = 'demo_secret'
+                    st.rerun()
     
     with import_tab:
         st.subheader("Import from CSV File")
@@ -641,8 +686,10 @@ elif page == "Import Data":
         
         # Create a dataframe with empty rows for manual entry
         empty_rows = 5
+        # Use actual datetime objects for date column
+        today = datetime.now().date()
         empty_data = {
-            "date": [""] * empty_rows,
+            "date": [today] * empty_rows,
             "description": [""] * empty_rows,
             "amount": [0.0] * empty_rows,
             "account": [""] * empty_rows,
@@ -655,7 +702,7 @@ elif page == "Import Data":
         manual_df = st.data_editor(
             empty_df,
             column_config={
-                "date": st.column_config.DateColumn("Date"),
+                "date": st.column_config.DatetimeColumn("Date", format="YYYY-MM-DD"),
                 "description": "Description",
                 "amount": st.column_config.NumberColumn(
                     "Amount",
