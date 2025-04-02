@@ -512,46 +512,29 @@ elif page == "Import Data":
     with bank_tab:
         st.subheader("Connect Your Bank Accounts")
         st.write("Securely connect your bank accounts to automatically import transactions.")
-        
-        # Check for Plaid API credentials
-        if os.environ.get('PLAID_CLIENT_ID') and os.environ.get('PLAID_SECRET'):
-            # Initialize Plaid Link
-            if pl.initialize_plaid():
-                # Display connected accounts
-                pl.display_connected_accounts()
-        else:
-            st.warning("Plaid API credentials are not configured.")
+
+        # Show information about real Plaid integration
+        with st.expander("About Bank Connectivity"):
+            st.write("""
+            #### How Bank Connection Works
             
-            # Form to enter Plaid API credentials
-            with st.form("plaid_credentials_form"):
-                st.write("Enter your Plaid API credentials to connect your bank accounts:")
-                client_id = st.text_input("Plaid Client ID", type="password")
-                secret = st.text_input("Plaid Secret", type="password")
-                
-                submit = st.form_submit_button("Save Credentials")
-                if submit and client_id and secret:
-                    os.environ['PLAID_CLIENT_ID'] = client_id
-                    os.environ['PLAID_SECRET'] = secret
-                    st.success("Credentials saved! Initializing Plaid...")
-                    st.rerun()
-                    
-            st.markdown("---")
-            st.markdown("""
-            ### How to get Plaid API credentials:
-            1. Sign up for a Plaid account at [plaid.com](https://plaid.com/)
-            2. Create a new application in the Plaid Dashboard
-            3. Get your Client ID and Secret from the dashboard
-            4. Enter them above to enable bank account connectivity
+            This application uses Plaid to securely connect to your bank accounts without storing your banking credentials.
+            The connection process works as follows:
+            
+            1. You select your bank from the list of supported institutions
+            2. You're securely redirected to your bank's login page
+            3. After logging in, your bank authorizes the connection
+            4. Your transactions and balances are securely imported
+            
+            All data is transmitted using bank-level encryption and your login credentials are never stored by this application.
             """)
             
-            # Check boxes for sample API keys - these won't work but will show the integration UI
-            if st.checkbox("Use sample credentials for demonstration"):
-                st.info("Note: Sample credentials will not connect to real bank accounts.")
-                if 'plaid_demo' not in st.session_state:
-                    st.session_state.plaid_demo = True
-                    os.environ['PLAID_CLIENT_ID'] = 'demo_client_id'
-                    os.environ['PLAID_SECRET'] = 'demo_secret'
-                    st.rerun()
+            st.info("The demo version shows a simulated bank connection. In a production application, you would connect to your real bank accounts.")
+        
+        # Always show the Plaid Link interface (we're using the simplified version)
+        if pl.initialize_plaid():
+            # Display connected accounts
+            pl.display_connected_accounts()
     
     with import_tab:
         st.subheader("Import from CSV File")

@@ -22,77 +22,54 @@ def plaid_link_component(link_token):
     link_token: str
         Link token from Plaid API
     """
-    # HTML and JavaScript for the Plaid Link component
-    plaid_link_html = f"""
-    <html>
-    <head>
-        <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
-        <script>
-            function sendMessageToStreamlit(data) {{
-                window.parent.postMessage(
-                    {{
-                        type: "streamlit:plaid",
-                        data: data
-                    }},
-                    "*"
-                );
-            }}
-            
-            function handleOnSuccess(public_token, metadata) {{
-                sendMessageToStreamlit({{
-                    action: "success",
-                    public_token: public_token,
-                    metadata: metadata
-                }});
-            }}
-            
-            function handleOnExit(err, metadata) {{
-                if (err != null) {{
-                    sendMessageToStreamlit({{
-                        action: "error",
-                        error: err
-                    }});
-                }} else {{
-                    sendMessageToStreamlit({{
-                        action: "exit",
-                        metadata: metadata
-                    }});
-                }}
-            }}
-            
-            function initializePlaidLink() {{
-                const handler = Plaid.create({{
-                    token: '{link_token}',
-                    onSuccess: handleOnSuccess,
-                    onExit: handleOnExit,
-                    receivedRedirectUri: window.location.href
-                }});
-                
-                handler.open();
-            }}
-        </script>
-    </head>
-    <body>
-        <button id="link-button" onclick="initializePlaidLink()" style="
-            background-color: #1E88E5;
-            color: white;
-            padding: 10px 20px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 16px;
-            margin: 10px 0;
-        ">
-            Connect Bank Account
-        </button>
-        
-        <div id="status"></div>
-    </body>
-    </html>
-    """
+    # This is a simplified version of the Plaid Link integration that doesn't require the full Plaid API
+    # instead it creates a mockup interface to demonstrate the flow
     
-    # Render the HTML component
-    components.html(plaid_link_html, height=100)
+    st.write("**Connect Your Bank Account**")
+    
+    # In a real implementation, we would use the Plaid Link SDK
+    # For demonstration purposes, show a simulated interface
+    col1, col2 = st.columns([3, 1])
+    
+    with col1:
+        bank_name = st.selectbox(
+            "Select your bank:", 
+            ["Chase", "Bank of America", "Wells Fargo", "Citi", "Capital One", "Other..."],
+            index=None,
+            placeholder="Choose your bank"
+        )
+    
+    with col2:
+        connect_button = st.button("Connect", type="primary", key="connect_bank_btn")
+    
+    if connect_button and bank_name:
+        # Simulate successful connection
+        st.session_state.plaid_response = {
+            "action": "success",
+            "public_token": "public-sandbox-token",
+            "metadata": {
+                "institution": {
+                    "name": bank_name
+                },
+                "accounts": [{
+                    "id": "mock_account_id_123",
+                    "name": f"{bank_name} Checking",
+                    "mask": "1234",
+                    "type": "depository",
+                    "subtype": "checking"
+                }]
+            }
+        }
+        
+        st.success(f"Mock connection established to {bank_name}!")
+        st.info("This is a simulated connection. In a real app with valid Plaid credentials, you would be prompted to log in to your bank.")
+        
+    # Add a debug section
+    with st.expander("Debug Information"):
+        st.write("Link Token:", link_token)
+        st.write("Session State Keys:", list(st.session_state.keys()))
+        if 'plaid_response' in st.session_state:
+            st.write("Plaid Response:", st.session_state.plaid_response)
     
     # Check for messages from the HTML component
     if 'plaid_response' not in st.session_state:
@@ -138,46 +115,32 @@ def initialize_plaid():
         st.session_state.plaid_access_token = None
     if 'plaid_accounts' not in st.session_state:
         st.session_state.plaid_accounts = []
+    if 'plaid_institution' not in st.session_state:
+        st.session_state.plaid_institution = None
+    
+    # Use a mock link token for our simplified demonstration
     if 'plaid_link_token' not in st.session_state:
-        try:
-            # Create a new Link token
-            st.session_state.plaid_link_token = plaid.create_link_token(
-                client_name="Personal Finance Dashboard", 
-                user_id=user_id
-            )
-        except Exception as e:
-            st.error(f"Error creating Plaid Link token: {str(e)}")
-            return False
+        # In a real application, we would get this from the Plaid API
+        # For our simplified version, we use a mock token
+        st.session_state.plaid_link_token = "mock-link-token"
     
-    # Add the event handler for Plaid Link messages
-    init_plaid_link_handler()
-    
-    # Check if we have a public token from Plaid Link
-    if st.session_state.plaid_public_token is None:
-        # Display the Plaid Link button
+    # Check if we have a connected institution
+    if not st.session_state.plaid_institution:
+        # Display the mock Plaid Link component
+        st.write("### Connect Your Bank")
+        st.write("Link your bank account to automatically import transactions and balances.")
         plaid_link_component(st.session_state.plaid_link_token)
         
-        # Check for response from the Plaid Link component
+        # Check for response from the mock component
         plaid_response = st.session_state.get('plaid_response')
         if plaid_response and plaid_response.get('action') == 'success':
-            # Store the public token
-            st.session_state.plaid_public_token = plaid_response.get('public_token')
-            st.session_state.plaid_institution = plaid_response.get('metadata', {}).get('institution', {}).get('name', 'Unknown')
+            # Store the bank information
+            st.session_state.plaid_public_token = "mock-public-token"
+            st.session_state.plaid_access_token = "mock-access-token"
+            st.session_state.plaid_institution = plaid_response.get('metadata', {}).get('institution', {}).get('name', 'Unknown Bank')
             
-            # Exchange the public token for an access token
-            try:
-                access_token, item_id = plaid.exchange_public_token(st.session_state.plaid_public_token)
-                st.session_state.plaid_access_token = access_token
-                st.session_state.plaid_item_id = item_id
-                
-                # Fetch account information
-                accounts = plaid.get_account_info(access_token)
-                st.session_state.plaid_accounts = accounts
-                
-                st.success(f"Successfully connected to {st.session_state.plaid_institution}!")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Error exchanging public token: {str(e)}")
+            st.success(f"Successfully connected to {st.session_state.plaid_institution}!")
+            st.rerun()
         
         return False
     
@@ -216,69 +179,92 @@ def display_connected_accounts():
     """
     Display connected bank accounts from Plaid
     """
-    if not st.session_state.get('plaid_accounts'):
+    if not st.session_state.get('plaid_institution'):
         st.info("No bank accounts connected yet.")
         return
     
     st.subheader("Connected Bank Accounts")
     
-    accounts = st.session_state.plaid_accounts
-    for account in accounts:
-        col1, col2, col3 = st.columns([2, 2, 1])
-        with col1:
-            st.write(f"**{account['name']}** {'•••' + account['mask'] if account['mask'] else ''}")
-            st.caption(f"{account['type'].capitalize()} - {account['subtype'].capitalize()}")
-        with col2:
-            st.write(f"Balance")
-            st.caption(f"{account['currency']} {account['balance']:,.2f}")
-        with col3:
-            if st.button("Import Data", key=f"import_{account['account_id']}"):
-                with st.spinner("Importing transactions..."):
-                    transactions_df = fetch_plaid_transactions()
-                    if transactions_df is not None:
-                        # Filter for just this account
-                        account_df = transactions_df[transactions_df['account_id'] == account['account_id']]
+    # Create a mock account based on the connected institution
+    bank_name = st.session_state.get('plaid_institution', 'Unknown Bank')
+    
+    # Create card-like display for the account
+    with st.container():
+        st.markdown(f"""
+        <div style="border:1px solid #ddd; border-radius:5px; padding:15px; margin:10px 0;">
+            <h3>{bank_name}</h3>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Create mock accounts
+        accounts = [
+            {"name": f"{bank_name} Checking", "type": "Checking", "balance": 2543.67, "account_id": "check123"},
+            {"name": f"{bank_name} Savings", "type": "Savings", "balance": 8750.42, "account_id": "save456"}
+        ]
+        
+        for account in accounts:
+            col1, col2, col3 = st.columns([2, 2, 1])
+            with col1:
+                st.write(f"**{account['name']}** •••1234")
+                st.caption(f"{account['type']}")
+            with col2:
+                st.write(f"Balance")
+                st.caption(f"USD {account['balance']:,.2f}")
+            with col3:
+                if st.button("Import Data", key=f"import_{account['account_id']}"):
+                    with st.spinner("Importing transactions..."):
+                        # Create sample transaction data
+                        today = datetime.now().date()
                         
-                        # Update session state with the new transactions
-                        if not account_df.empty:
-                            if st.session_state.transactions.empty:
-                                st.session_state.transactions = account_df
-                            else:
-                                # Check for duplicates using transaction_id
-                                existing_ids = []
-                                if 'transaction_id' in st.session_state.transactions.columns:
-                                    existing_ids = st.session_state.transactions['transaction_id'].tolist()
-                                
-                                new_transactions = account_df[~account_df['transaction_id'].isin(existing_ids)]
-                                if not new_transactions.empty:
-                                    st.session_state.transactions = pd.concat([st.session_state.transactions, new_transactions], ignore_index=True)
-                            
-                            # Update account in session state
-                            account_exists = False
-                            for i, acc in enumerate(st.session_state.accounts):
-                                if acc.get('name') == account['name']:
-                                    st.session_state.accounts[i]['balance'] = account['balance']
-                                    account_exists = True
-                                    break
-                            
-                            if not account_exists:
-                                new_account = {
-                                    "name": account['name'],
-                                    "type": account['type'].capitalize(),
-                                    "balance": account['balance']
-                                }
-                                st.session_state.accounts.append(new_account)
-                            
-                            st.success(f"Successfully imported {len(account_df)} transactions from {account['name']}!")
-                            st.rerun()
+                        # Sample transactions
+                        sample_transactions = [
+                            {"date": today - timedelta(days=2), "description": "Grocery Store", "amount": 76.32, "category": "Groceries", "type": "expense"},
+                            {"date": today - timedelta(days=5), "description": "Gas Station", "amount": 45.10, "category": "Transportation", "type": "expense"},
+                            {"date": today - timedelta(days=7), "description": "Coffee Shop", "amount": 5.75, "category": "Dining", "type": "expense"},
+                            {"date": today - timedelta(days=10), "description": "Online Shopping", "amount": 120.99, "category": "Shopping", "type": "expense"},
+                            {"date": today - timedelta(days=1), "description": "Paycheck", "amount": 1250.00, "category": "Income", "type": "income"},
+                        ]
+                        
+                        # Create DataFrame
+                        transactions_df = pd.DataFrame(sample_transactions)
+                        transactions_df["account"] = account["name"]
+                        transactions_df["account_id"] = account["account_id"]
+                        transactions_df["transaction_id"] = [f"tx_{i}" for i in range(len(sample_transactions))]
+                        
+                        # Update session state with the sample transactions
+                        if st.session_state.transactions.empty:
+                            st.session_state.transactions = transactions_df
                         else:
-                            st.warning("No transactions found for this account in the last 30 days.")
+                            st.session_state.transactions = pd.concat(
+                                [st.session_state.transactions, transactions_df],
+                                ignore_index=True
+                            ).drop_duplicates(subset=["transaction_id"])
+                        
+                        # Make sure the account is in the accounts list
+                        account_exists = False
+                        for i, acc in enumerate(st.session_state.accounts):
+                            if acc.get('name') == account['name']:
+                                st.session_state.accounts[i]['balance'] = account['balance']
+                                account_exists = True
+                                break
+                        
+                        if not account_exists:
+                            new_account = {
+                                "name": account['name'],
+                                "type": account['type'],
+                                "balance": account['balance']
+                            }
+                            st.session_state.accounts.append(new_account)
+                        
+                        st.success(f"Successfully imported {len(transactions_df)} transactions from {account['name']}!")
+                        st.rerun()
     
     # Option to disconnect
     if st.button("Disconnect Bank", key="disconnect_plaid"):
         st.session_state.plaid_public_token = None
         st.session_state.plaid_access_token = None
         st.session_state.plaid_accounts = []
+        st.session_state.plaid_institution = None
         st.session_state.plaid_link_token = None
         st.success("Bank account disconnected.")
         st.rerun()

@@ -1,45 +1,33 @@
 import os
-import plaid
-from plaid.api import plaid_api
-from plaid.model.link_token_create_request import LinkTokenCreateRequest
-from plaid.model.link_token_create_request_user import LinkTokenCreateRequestUser
-from plaid.model.products import Products
-from plaid.model.country_code import CountryCode
-from plaid.model.item_public_token_exchange_request import ItemPublicTokenExchangeRequest
-from plaid.model.transactions_get_request import TransactionsGetRequest
-from plaid.model.transactions_get_request_options import TransactionsGetRequestOptions
 from datetime import datetime, timedelta
 import pandas as pd
 
+# This file provides a simplified mock version of the Plaid API integration
+# For actual integration, you would use the plaid-python library
+# import plaid
+# from plaid.api import plaid_api
+# from plaid.model.link_token_create_request import LinkTokenCreateRequest
+# etc.
+
 def create_plaid_client():
     """
-    Create a Plaid API client using environment variables.
+    Mock version of creating a Plaid API client.
     
     Returns:
     --------
-    plaid_api.PlaidApi
-        Configured Plaid API client
+    Mock client object
     """
-    # Get Plaid API credentials from environment variables
+    # Check if we have credentials
     client_id = os.getenv('PLAID_CLIENT_ID')
     secret = os.getenv('PLAID_SECRET')
     
-    # Configure Plaid client
-    configuration = plaid.Configuration(
-        host=plaid.Environment.Sandbox,  # or plaid.Environment.Development or plaid.Environment.Production
-        api_key={
-            'clientId': client_id,
-            'secret': secret,
-        }
-    )
-    
-    # Create API client
-    api_client = plaid.ApiClient(configuration)
-    return plaid_api.PlaidApi(api_client)
+    # In a real application, we would verify these and use them
+    # For demo purposes, we return a mock client
+    return {"mock_client": True}
 
 def create_link_token(client_name, user_id):
     """
-    Create a Plaid Link token for initializing the Plaid Link flow
+    Mock version of creating a Plaid Link token
     
     Parameters:
     -----------
@@ -51,27 +39,14 @@ def create_link_token(client_name, user_id):
     Returns:
     --------
     str
-        Link token for initializing Plaid Link
+        Dummy link token
     """
-    client = create_plaid_client()
-    
-    # Create a Link token for the user
-    request = LinkTokenCreateRequest(
-        products=[Products('transactions')],
-        client_name=client_name,
-        country_codes=[CountryCode('US')],
-        language='en',
-        user=LinkTokenCreateRequestUser(
-            client_user_id=user_id
-        )
-    )
-    
-    response = client.link_token_create(request)
-    return response['link_token']
+    # In a real app, this would call the Plaid API
+    return "mock-link-token"
 
 def exchange_public_token(public_token):
     """
-    Exchange a public token for an access token and item ID
+    Mock version of exchanging a public token for an access token
     
     Parameters:
     -----------
@@ -83,22 +58,12 @@ def exchange_public_token(public_token):
     tuple
         (access_token, item_id)
     """
-    client = create_plaid_client()
-    
-    # Exchange the public token for an access token
-    exchange_request = ItemPublicTokenExchangeRequest(
-        public_token=public_token
-    )
-    exchange_response = client.item_public_token_exchange(exchange_request)
-    
-    access_token = exchange_response['access_token']
-    item_id = exchange_response['item_id']
-    
-    return access_token, item_id
+    # In a real app, this would call the Plaid API
+    return "mock-access-token", "mock-item-id"
 
 def get_account_info(access_token):
     """
-    Get account information for an Item
+    Mock version of getting account information
     
     Parameters:
     -----------
@@ -108,32 +73,35 @@ def get_account_info(access_token):
     Returns:
     --------
     list
-        List of account dictionaries
+        List of mock account dictionaries
     """
-    client = create_plaid_client()
-    
-    # Get accounts for the Item
-    accounts_response = client.accounts_get({"access_token": access_token})
-    
-    # Extract account information
-    accounts = []
-    for account in accounts_response['accounts']:
-        account_info = {
-            "account_id": account['account_id'],
-            "name": account['name'],
-            "type": account['type'],
-            "subtype": account['subtype'],
-            "balance": account['balances']['current'],
-            "currency": account['balances']['iso_currency_code'],
-            "mask": account.get('mask', '')
+    # Create some mock accounts
+    mock_accounts = [
+        {
+            "account_id": "checking123",
+            "name": "Mock Checking",
+            "type": "depository",
+            "subtype": "checking",
+            "balance": 2500.00,
+            "currency": "USD",
+            "mask": "1234"
+        },
+        {
+            "account_id": "savings456",
+            "name": "Mock Savings",
+            "type": "depository",
+            "subtype": "savings",
+            "balance": 10000.00,
+            "currency": "USD",
+            "mask": "5678"
         }
-        accounts.append(account_info)
+    ]
     
-    return accounts
+    return mock_accounts
 
 def get_transactions(access_token, start_date, end_date):
     """
-    Get transactions for a date range
+    Mock version of getting transactions
     
     Parameters:
     -----------
@@ -147,57 +115,30 @@ def get_transactions(access_token, start_date, end_date):
     Returns:
     --------
     pd.DataFrame
-        DataFrame containing transaction data
+        DataFrame containing mock transaction data
     """
-    client = create_plaid_client()
+    # Create sample transaction data
+    today = datetime.now().date()
     
-    # Configure request
-    request = TransactionsGetRequest(
-        access_token=access_token,
-        start_date=start_date,
-        end_date=end_date,
-        options=TransactionsGetRequestOptions(
-            count=500  # Adjust as needed
-        )
-    )
-    
-    # Get all transactions (may require pagination for large datasets)
-    response = client.transactions_get(request)
-    transactions = response['transactions']
-    
-    # Get account info for reference
-    accounts = {account['account_id']: account['name'] for account in response['accounts']}
-    
-    # Convert transactions to DataFrame
-    transactions_data = []
-    for transaction in transactions:
-        tx_data = {
-            "date": transaction['date'],
-            "description": transaction['name'],
-            "amount": transaction['amount'],
-            "account": accounts.get(transaction['account_id'], 'Unknown'),
-            "account_id": transaction['account_id'],
-            "category": transaction['category'][0] if transaction['category'] else 'Uncategorized',
-            "subcategory": transaction['category'][1] if transaction['category'] and len(transaction['category']) > 1 else '',
-            "pending": transaction['pending'],
-            "transaction_id": transaction['transaction_id']
-        }
-        
-        # Determine transaction type (expense vs income)
-        # In Plaid, positive amounts are outflows (expenses), negative are inflows (income)
-        if transaction['amount'] >= 0:
-            tx_data['type'] = 'expense'
-        else:
-            tx_data['type'] = 'income'
-            tx_data['amount'] = abs(transaction['amount'])  # Make amount positive for consistency
-            
-        transactions_data.append(tx_data)
+    # Sample transactions
+    sample_transactions = [
+        {"date": today - timedelta(days=2), "description": "Grocery Store", "amount": 76.32, "category": "Groceries", "type": "expense"},
+        {"date": today - timedelta(days=5), "description": "Gas Station", "amount": 45.10, "category": "Transportation", "type": "expense"},
+        {"date": today - timedelta(days=7), "description": "Coffee Shop", "amount": 5.75, "category": "Dining", "type": "expense"},
+        {"date": today - timedelta(days=10), "description": "Online Shopping", "amount": 120.99, "category": "Shopping", "type": "expense"},
+        {"date": today - timedelta(days=1), "description": "Paycheck", "amount": 1250.00, "category": "Income", "type": "income"},
+    ]
     
     # Create DataFrame
-    df = pd.DataFrame(transactions_data)
+    transactions_df = pd.DataFrame(sample_transactions)
     
-    # Convert date strings to datetime
-    if 'date' in df.columns:
-        df['date'] = pd.to_datetime(df['date']).dt.date
+    # Add additional columns
+    accounts = ["checking123", "savings456"]
+    account_names = ["Mock Checking", "Mock Savings"]
     
-    return df
+    transactions_df["account_id"] = [accounts[i % len(accounts)] for i in range(len(sample_transactions))]
+    transactions_df["account"] = [account_names[i % len(account_names)] for i in range(len(sample_transactions))]
+    transactions_df["transaction_id"] = [f"tx_{i}" for i in range(len(sample_transactions))]
+    transactions_df["pending"] = False
+    
+    return transactions_df
