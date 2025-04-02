@@ -9,7 +9,7 @@ import data_handler as dh
 import visualizations as viz
 import budget_tools as budget
 import utils
-import truelayer_link as tl
+import truelayer_link_new as tl
 
 # Set page configuration
 st.set_page_config(
