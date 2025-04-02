@@ -24,9 +24,9 @@ def truelayer_component():
         # Create a link for redirecting to TrueLayer auth page
         client_config = st.session_state.truelayer_client
         
-        # In a real application, this would be your app's redirect URI
-        # For Streamlit apps, we'll handle the callback manually
-        redirect_uri = "https://example.com/callback"  # This is a placeholder
+        # For TrueLayer, we need to use a redirect URI that's been registered in your TrueLayer dashboard
+        # This URL must match exactly what you've configured in your TrueLayer app settings
+        redirect_uri = "https://financial-dashboard.replit.app/callback"
         
         # Generate the authentication link
         auth_link = truelayer.create_auth_link(client_config, redirect_uri)
@@ -42,6 +42,15 @@ def truelayer_component():
     # Real authentication flow with TrueLayer
     st.write("### Connect to Your Bank")
     st.write("You'll be redirected to your bank's website to authorize access.")
+    
+    # Add important information about TrueLayer configuration
+    st.info("""
+    **Important**: For TrueLayer to work correctly, you need to configure your TrueLayer application with the following:
+    
+    1. Register the redirect URL `https://financial-dashboard.replit.app/callback` in your TrueLayer developer dashboard
+    2. Ensure your TrueLayer client ID and secret are correctly set in the environment variables
+    """)
+    
     
     # Display the authentication link
     auth_link = st.session_state.truelayer_auth_link
@@ -69,6 +78,8 @@ def truelayer_component():
         
         if auth_code:
             # Exchange the auth code for an access token
+            # Get the redirect URI we used earlier
+            redirect_uri = "https://financial-dashboard.replit.app/callback"
             token_response = truelayer.exchange_auth_code(
                 st.session_state.truelayer_client,
                 auth_code,
