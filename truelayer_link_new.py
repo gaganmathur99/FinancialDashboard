@@ -91,26 +91,28 @@ def truelayer_component():
             
     with tab3:
         st.markdown("#### Developer OAuth Flow")
-        st.write("Use the standard OAuth flow (requires proper redirect URI configuration):")
+        st.write("Use the standard OAuth flow with the preconfigured redirect URI:")
         
-        # Create redirect URI options
-        redirect_options = [
-            "https://financial-dashboard.replit.app/callback",
-            "https://example.com/callback", 
-            "http://localhost:8501/callback"
-        ]
-        
-        # Let user choose a redirect URI
-        selected_redirect = st.selectbox(
-            "Select redirect URI (must match your TrueLayer dashboard):",
-            redirect_options
-        )
+        # Use the exact redirect URI from the provided link
+        fixed_redirect = "https://console.truelayer.com/redirect-page"
+        st.write(f"Using redirect URI: {fixed_redirect}")
+        st.info("This redirect URI must match what's configured in your TrueLayer dashboard.")
         
         # Create authentication link on demand
-        if st.button("Generate Auth Link", key="gen_auth_link"):
-            auth_link = truelayer.create_auth_link(st.session_state.truelayer_client, selected_redirect)
+        if st.button("Use Provided Auth Link", key="gen_auth_link"):
+            # Use the provided authentication link directly
+            auth_link = "https://auth.truelayer.com/?response_type=code&client_id=personalfinance-662298&scope=info%20accounts%20balance%20cards%20transactions%20direct_debits%20standing_orders%20offline_access&redirect_uri=https://console.truelayer.com/redirect-page&providers=uk-ob-all%20uk-oauth-all"
             st.session_state.truelayer_auth_link = auth_link
-            st.session_state.truelayer_redirect_uri = selected_redirect
+            st.session_state.truelayer_redirect_uri = fixed_redirect
+            
+            st.success("Authentication link ready!")
+            st.markdown(f"[Click here to connect your bank]({auth_link})", unsafe_allow_html=True)
+            
+        # Alternative: generate link from parameters
+        if st.button("Generate Auth Link (Alternative)", key="gen_alt_auth_link"):
+            auth_link = truelayer.create_auth_link(st.session_state.truelayer_client, fixed_redirect)
+            st.session_state.truelayer_auth_link = auth_link
+            st.session_state.truelayer_redirect_uri = fixed_redirect
             
             if auth_link:
                 st.success("Authentication link generated!")

@@ -79,16 +79,17 @@ def create_auth_link(client_config, redirect_uri):
         Authentication URL for the user to connect their bank
     """
     try:
-        client_id = client_config.get("client_id")
+        # Use fixed client ID from the link for consistency
+        client_id = "personalfinance-662298"
         
-        # Construct the authorization URL
-        auth_url = f"{BASE_URL}/connect/authorize"
+        # Construct the authorization URL with exact parameters from the provided link
+        auth_url = f"{BASE_URL}/"
         params = {
-            "client_id": client_id,
             "response_type": "code",
-            "scope": "info accounts balance cards transactions",
-            "redirect_uri": redirect_uri,
-            "providers": "uk-oauth-all,uk-oauth-ob-all,uk-oauth-ob2-all,uk-cs-mock"
+            "client_id": client_id,
+            "scope": "info accounts balance cards transactions direct_debits standing_orders offline_access",
+            "redirect_uri": "https://console.truelayer.com/redirect-page",
+            "providers": "uk-ob-all uk-oauth-all"
         }
         
         # Import urllib for proper URL encoding
@@ -103,7 +104,7 @@ def create_auth_link(client_config, redirect_uri):
         print(f"Error creating auth link: {str(e)}")
         return ""
 
-def exchange_auth_code(client_config, auth_code, redirect_uri):
+def exchange_auth_code(client_config, auth_code, redirect_uri=None):
     """
     Exchange an authorization code for an access token
     
@@ -113,7 +114,7 @@ def exchange_auth_code(client_config, auth_code, redirect_uri):
         TrueLayer client configuration
     auth_code: str
         Authorization code from the redirect
-    redirect_uri: str
+    redirect_uri: str, optional
         Redirect URI used in the initial authorization
         
     Returns:
@@ -122,8 +123,10 @@ def exchange_auth_code(client_config, auth_code, redirect_uri):
         Access token response
     """
     try:
-        client_id = client_config.get("client_id")
+        # Use fixed values for consistency with the auth link
+        client_id = "personalfinance-662298"
         client_secret = client_config.get("client_secret")
+        fixed_redirect = "https://console.truelayer.com/redirect-page"
         
         token_url = f"{BASE_URL}/connect/token"
         token_data = {
@@ -131,7 +134,7 @@ def exchange_auth_code(client_config, auth_code, redirect_uri):
             "client_secret": client_secret,
             "code": auth_code,
             "grant_type": "authorization_code",
-            "redirect_uri": redirect_uri
+            "redirect_uri": fixed_redirect
         }
         
         response = requests.post(token_url, data=token_data)
