@@ -32,84 +32,64 @@ def truelayer_component():
         auth_link = truelayer.create_auth_link(client_config, redirect_uri)
         st.session_state.truelayer_auth_link = auth_link
     
-    # If using mock client, show a simpler interface
-    if st.session_state.truelayer_client.get("mock_client", False):
-        # Create columns for bank selection and connect button
-        col1, col2 = st.columns([3, 1])
+    # Check for client errors
+    if st.session_state.truelayer_client.get("error"):
+        error_msg = st.session_state.truelayer_client.get("error")
+        st.error(f"Error with TrueLayer configuration: {error_msg}")
+        st.info("Please check your TrueLayer API credentials.")
+        return
         
-        with col1:
-            bank_name = st.selectbox(
-                "Select your bank:", 
-                ["Barclays", "HSBC", "Lloyds", "Monzo", "Revolut", "Starling", "Other..."],
-                index=None,
-                placeholder="Choose your bank"
+    # Real authentication flow with TrueLayer
+    st.write("### Connect to Your Bank")
+    st.write("You'll be redirected to your bank's website to authorize access.")
+    
+    # Display the authentication link
+    auth_link = st.session_state.truelayer_auth_link
+    st.markdown(f"""
+    1. Click the button below to connect your bank account
+    2. Select your bank on the TrueLayer page
+    3. Log in to your bank account
+    4. Authorize the connection
+    5. You'll be redirected back to this app
+    """)
+    
+    # Create a button that opens the auth link in a new tab
+    if st.button("Connect Bank Account", type="primary"):
+        # In a real app, we'd use something like:
+        # js = f"""window.open("{auth_link}", "_blank")"""
+        # st.components.v1.html(f"<script>{js}</script>", height=0)
+        
+        # For our implementation, show the link
+        st.markdown(f"[Click here to connect your bank]({auth_link})", unsafe_allow_html=True)
+        
+        # Since we can't handle actual OAuth redirects in this simple app,
+        # we'll provide a way to manually enter the auth code
+        auth_code = st.text_input("After authorizing, enter the code from the redirect URL:", 
+                                  help="Look for the 'code=' parameter in the URL you were redirected to")
+        
+        if auth_code:
+            # Exchange the auth code for an access token
+            token_response = truelayer.exchange_auth_code(
+                st.session_state.truelayer_client,
+                auth_code,
+                redirect_uri
             )
-        
-        with col2:
-            connect_button = st.button("Connect", type="primary", key="connect_bank_btn")
-        
-        if connect_button and bank_name:
-            # For demo purposes with mock client, simulate a connection
-            st.session_state.truelayer_response = {
-                "action": "success",
-                "bank_name": bank_name,
-                "account_ids": ["checking123", "savings456"]
-            }
             
-            st.success(f"Connection established to {bank_name}!")
-            st.info("Note: This is using sample data. To connect to real accounts, valid TrueLayer credentials are required.")
-    else:
-        # Real authentication flow with TrueLayer
-        st.write("### Connect to Your Bank")
-        st.write("You'll be redirected to your bank's website to authorize access.")
-        
-        # Display the authentication link
-        auth_link = st.session_state.truelayer_auth_link
-        st.markdown(f"""
-        1. Click the button below to connect your bank account
-        2. Select your bank on the TrueLayer page
-        3. Log in to your bank account
-        4. Authorize the connection
-        5. You'll be redirected back to this app
-        """)
-        
-        # Create a button that opens the auth link in a new tab
-        if st.button("Connect Bank Account", type="primary"):
-            # In a real app, we'd use something like:
-            # js = f"""window.open("{auth_link}", "_blank")"""
-            # st.components.v1.html(f"<script>{js}</script>", height=0)
-            
-            # For our implementation, show the link
-            st.markdown(f"[Click here to connect your bank]({auth_link})", unsafe_allow_html=True)
-            
-            # Since we can't handle actual OAuth redirects in this simple app,
-            # we'll provide a way to manually enter the auth code
-            auth_code = st.text_input("After authorizing, enter the code from the redirect URL:", 
-                                      help="Look for the 'code=' parameter in the URL you were redirected to")
-            
-            if auth_code:
-                # Exchange the auth code for an access token
-                token_response = truelayer.exchange_auth_code(
-                    st.session_state.truelayer_client,
-                    auth_code,
-                    redirect_uri
-                )
+            if token_response:
+                # Store the access token in session state
+                st.session_state.truelayer_access_token = token_response.get("access_token")
+                st.session_state.truelayer_refresh_token = token_response.get("refresh_token")
                 
-                if token_response:
-                    # Store the access token in session state
-                    st.session_state.truelayer_access_token = token_response.get("access_token")
-                    st.session_state.truelayer_refresh_token = token_response.get("refresh_token")
-                    
-                    # To get the bank name, we need to fetch account info
-                    # For now, just mark as connected
-                    st.session_state.truelayer_response = {
-                        "action": "success",
-                        "bank_name": "Your Bank",
-                        "auth_success": True
-                    }
-                    
-                    st.success("Successfully connected to your bank!")
-                    st.rerun()
+                # To get the bank name, we need to fetch account info
+                # For now, just mark as connected
+                st.session_state.truelayer_response = {
+                    "action": "success",
+                    "bank_name": "Your Bank",
+                    "auth_success": True
+                }
+                
+                st.success("Successfully connected to your bank!")
+                st.rerun()
         
     # Add a debug section
     with st.expander("Debug Information"):
@@ -173,10 +153,10 @@ def initialize_truelayer():
                     st.error(f"Error fetching account information: {str(e)}")
                     st.session_state.truelayer_bank_name = "Connected Bank"
             else:
-                # This was a mock connection
-                st.session_state.truelayer_access_token = "mock-access-token"
-                st.session_state.truelayer_bank_name = truelayer_response.get('bank_name', 'Unknown Bank')
-                st.session_state.truelayer_account_ids = truelayer_response.get('account_ids', [])
+                # Store the bank information from the response
+                st.session_state.truelayer_bank_name = truelayer_response.get('bank_name', 'Connected Bank')
+                if 'account_ids' in truelayer_response:
+                    st.session_state.truelayer_account_ids = truelayer_response.get('account_ids', [])
             
             st.success(f"Successfully connected to {st.session_state.truelayer_bank_name}!")
             st.rerun()
