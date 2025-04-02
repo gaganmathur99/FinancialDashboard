@@ -88,11 +88,14 @@ def create_auth_link(client_config, redirect_uri):
             "response_type": "code",
             "scope": "info accounts balance cards transactions",
             "redirect_uri": redirect_uri,
-            "providers": "uk-oauth-all uk-oauth-ob-all uk-oauth-ob2-all uk-cs-mock"
+            "providers": "uk-oauth-all,uk-oauth-ob-all,uk-oauth-ob2-all,uk-cs-mock"
         }
         
-        # Construct URL with query parameters
-        auth_link = f"{auth_url}?{'&'.join([f'{k}={v}' for k, v in params.items()])}"
+        # Import urllib for proper URL encoding
+        import urllib.parse
+        
+        # Construct URL with properly encoded query parameters
+        auth_link = f"{auth_url}?{urllib.parse.urlencode(params)}"
         return auth_link
     
     except Exception as e:

@@ -48,7 +48,10 @@ def truelayer_component():
     **Important**: For TrueLayer to work correctly, you need to configure your TrueLayer application with the following:
     
     1. Register the redirect URL `https://financial-dashboard.replit.app/callback` in your TrueLayer developer dashboard
-    2. Ensure your TrueLayer client ID and secret are correctly set in the environment variables
+    2. Make sure your TrueLayer client ID and secret are correctly set in the environment variables
+    3. If your TrueLayer application is in sandbox mode, you'll only be able to connect to test banks
+    
+    The redirect URI must be registered exactly as shown above without any modifications.
     """)
     
     
