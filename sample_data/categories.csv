@@ -1,0 +1,31 @@
+category,type
+Groceries,expense
+Dining,expense
+Utilities,expense
+Transportation,expense
+Entertainment,expense
+Shopping,expense
+Travel,expense
+Health,expense
+Rent,expense
+Insurance,expense
+Education,expense
+Fitness,expense
+Subscriptions,expense
+Gifts,expense
+Charity,expense
+Personal Care,expense
+Home Improvement,expense
+Childcare,expense
+Pet Expenses,expense
+Uncategorized,expense
+Salary,income
+Interest,income
+Dividends,income
+Bonus,income
+Reimbursement,income
+Investment,income
+Rental Income,income
+Freelance,income
+Other Income,income
+Transfer,transfer
