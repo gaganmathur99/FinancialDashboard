@@ -9,7 +9,7 @@ import data_handler as dh
 import visualizations as viz
 import budget_tools as budget
 import utils
-import plaid_link as pl
+import truelayer_link as tl
 
 # Set page configuration
 st.set_page_config(
@@ -513,12 +513,12 @@ elif page == "Import Data":
         st.subheader("Connect Your Bank Accounts")
         st.write("Securely connect your bank accounts to automatically import transactions.")
 
-        # Show information about real Plaid integration
+        # Show information about TrueLayer integration
         with st.expander("About Bank Connectivity"):
             st.write("""
             #### How Bank Connection Works
             
-            This application uses Plaid to securely connect to your bank accounts without storing your banking credentials.
+            This application uses TrueLayer to securely connect to your bank accounts without storing your banking credentials.
             The connection process works as follows:
             
             1. You select your bank from the list of supported institutions
@@ -531,10 +531,34 @@ elif page == "Import Data":
             
             st.info("The demo version shows a simulated bank connection. In a production application, you would connect to your real bank accounts.")
         
-        # Always show the Plaid Link interface (we're using the simplified version)
-        if pl.initialize_plaid():
+        # Display TrueLayer credentials form if needed
+        if not os.environ.get('TRUELAYER_CLIENT_ID') or not os.environ.get('TRUELAYER_CLIENT_SECRET'):
+            with st.expander("Set Up TrueLayer Credentials"):
+                st.write("""
+                ### TrueLayer API Credentials
+                
+                To connect to real bank accounts, you'll need to set up a TrueLayer developer account and provide your API credentials.
+                """)
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    client_id = st.text_input("Client ID", type="password", key="tl_client_id")
+                with col2:
+                    client_secret = st.text_input("Client Secret", type="password", key="tl_client_secret")
+                
+                if st.button("Save Credentials", key="save_tl_creds"):
+                    if client_id and client_secret:
+                        os.environ['TRUELAYER_CLIENT_ID'] = client_id
+                        os.environ['TRUELAYER_CLIENT_SECRET'] = client_secret
+                        st.success("TrueLayer credentials saved successfully!")
+                        st.rerun()
+                    else:
+                        st.error("Please provide both Client ID and Client Secret.")
+        
+        # Always show the TrueLayer interface
+        if tl.initialize_truelayer():
             # Display connected accounts
-            pl.display_connected_accounts()
+            tl.display_connected_accounts()
     
     with import_tab:
         st.subheader("Import from CSV File")
