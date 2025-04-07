@@ -1,17 +1,15 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 import os
 from datetime import datetime, timedelta
+import time
 
-# Import modules
-import data_handler as dh
-import visualizations as viz
-import budget_tools as budget
-import utils
-import truelayer_link_new as tl
+# Import custom modules
+from bank_integration import auth_manager, transaction_manager
+from components import bank_connection, transaction_dashboard
+from utils.encryption import get_fernet_key
 
-# Set page configuration
+# Configure page
 st.set_page_config(
     page_title="Personal Finance Dashboard",
     page_icon="💰",
@@ -19,810 +17,466 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Initialize session state for data persistence
-if 'accounts' not in st.session_state:
-    st.session_state.accounts = []
-if 'transactions' not in st.session_state:
-    st.session_state.transactions = pd.DataFrame()
-if 'budgets' not in st.session_state:
-    st.session_state.budgets = {}
-if 'categories' not in st.session_state:
-    st.session_state.categories = pd.read_csv('sample_data/categories.csv') if os.path.exists('sample_data/categories.csv') else pd.DataFrame(columns=['category', 'type'])
-
-# App title and introduction
-st.title("Personal Finance Dashboard")
-st.markdown("Aggregate all your bank data in one place for comprehensive financial analysis.")
-
-# Sidebar for navigation and settings
-with st.sidebar:
-    st.header("Navigation")
-    page = st.radio(
-        "Go to",
-        ["Dashboard", "Accounts", "Transactions", "Budgeting", "Import Data"]
-    )
+# Check for required env variables
+def check_api_keys():
+    """Check if API keys are set"""
+    truelayer_client_id = os.getenv("TRUELAYER_CLIENT_ID")
+    truelayer_client_secret = os.getenv("TRUELAYER_CLIENT_SECRET")
     
-    st.header("Settings")
-    date_range = st.selectbox(
-        "Date Range",
-        ["Last 30 days", "Last 3 months", "Last 6 months", "Last year", "All time"],
-        index=0
-    )
+    if not truelayer_client_id or not truelayer_client_secret:
+        st.sidebar.warning("⚠️ TrueLayer API keys not found")
+        st.sidebar.info("Set TRUELAYER_CLIENT_ID and TRUELAYER_CLIENT_SECRET environment variables")
+        return False
     
-    # Convert date range to actual dates
-    end_date = datetime.now().date()
-    if date_range == "Last 30 days":
-        start_date = end_date - timedelta(days=30)
-    elif date_range == "Last 3 months":
-        start_date = end_date - timedelta(days=90)
-    elif date_range == "Last 6 months":
-        start_date = end_date - timedelta(days=180)
-    elif date_range == "Last year":
-        start_date = end_date - timedelta(days=365)
-    else:  # All time
-        start_date = datetime(2000, 1, 1).date()
+    return True
 
-# Main content based on page selection
-if page == "Dashboard":
-    st.header("Financial Overview")
+# Sidebar navigation
+def sidebar():
+    st.sidebar.title("Personal Finance")
     
-    # Show warning if no data is available
-    if st.session_state.transactions.empty:
-        st.warning("No transaction data available. Please import data first.")
-        st.markdown("Go to **Import Data** page to upload your financial data.")
+    # Show navigation options
+    nav_options = [
+        "Dashboard",
+        "Accounts & Transactions",
+        "Budgeting",
+        "Settings"
+    ]
+    
+    # Use session state for navigation if available
+    if "nav" in st.session_state:
+        default_idx = nav_options.index(st.session_state.nav) if st.session_state.nav in nav_options else 0
     else:
-        # Filter transactions based on date range
-        filtered_df = dh.filter_transactions_by_date(
-            st.session_state.transactions, 
-            start_date, 
-            end_date
-        )
-        
-        # Create metrics row
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            total_balance = dh.calculate_total_balance(st.session_state.accounts)
-            st.metric(label="Total Balance", value=f"${total_balance:,.2f}")
-        
-        with col2:
-            income = dh.calculate_total_by_type(filtered_df, "income")
-            st.metric(label="Income", value=f"${income:,.2f}")
-        
-        with col3:
-            expenses = dh.calculate_total_by_type(filtered_df, "expense")
-            st.metric(label="Expenses", value=f"${expenses:,.2f}")
-        
-        with col4:
-            savings = income - expenses
-            savings_rate = (savings / income * 100) if income > 0 else 0
-            st.metric(label="Savings Rate", value=f"{savings_rate:.1f}%")
-        
-        # Spending trends
-        st.subheader("Spending Trends")
-        spending_trends_fig = viz.plot_spending_trends(filtered_df)
-        st.plotly_chart(spending_trends_fig, use_container_width=True)
-        
-        # Income vs Expenses
-        st.subheader("Income vs Expenses")
-        income_expense_fig = viz.plot_income_vs_expenses(filtered_df)
-        st.plotly_chart(income_expense_fig, use_container_width=True)
-        
-        # Spending by category
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.subheader("Spending by Category")
-            category_fig = viz.plot_spending_by_category(filtered_df)
-            st.plotly_chart(category_fig, use_container_width=True)
-        
-        with col2:
-            st.subheader("Top Merchants")
-            merchant_fig = viz.plot_top_merchants(filtered_df)
-            st.plotly_chart(merchant_fig, use_container_width=True)
-        
-        # Budget vs Actual
-        st.subheader("Budget vs Actual")
-        if st.session_state.budgets:
-            budget_fig = viz.plot_budget_vs_actual(filtered_df, st.session_state.budgets)
-            st.plotly_chart(budget_fig, use_container_width=True)
+        default_idx = 0
+    
+    selected = st.sidebar.radio("Navigation", nav_options, index=default_idx)
+    
+    # API key status
+    with st.sidebar.expander("API Status", expanded=False):
+        if check_api_keys():
+            st.success("✅ TrueLayer API keys configured")
         else:
-            st.info("No budgets set. Go to the Budgeting page to set up your budgets.")
-
-elif page == "Accounts":
-    st.header("Account Management")
+            st.error("❌ TrueLayer API keys missing")
     
-    # Add new account
-    with st.expander("Add New Account"):
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            account_name = st.text_input("Account Name", key="new_account_name")
-        with col2:
-            account_type = st.selectbox(
-                "Account Type",
-                ["Checking", "Savings", "Credit Card", "Investment", "Other"],
-                key="new_account_type"
-            )
-        with col3:
-            account_balance = st.number_input("Current Balance", min_value=0.0, key="new_account_balance")
-        
-        if st.button("Add Account"):
-            if account_name and account_balance is not None:
-                new_account = {
-                    "name": account_name,
-                    "type": account_type,
-                    "balance": account_balance
-                }
-                st.session_state.accounts.append(new_account)
-                st.success(f"Account '{account_name}' added successfully!")
-                st.rerun()
-            else:
-                st.error("Please fill in all fields.")
-    
-    # Display existing accounts
-    if st.session_state.accounts:
-        st.subheader("Your Accounts")
-        
-        accounts_df = pd.DataFrame(st.session_state.accounts)
-        edited_df = st.data_editor(
-            accounts_df,
-            column_config={
-                "name": "Account Name",
-                "type": st.column_config.SelectboxColumn(
-                    "Account Type",
-                    options=["Checking", "Savings", "Credit Card", "Investment", "Other"],
-                ),
-                "balance": st.column_config.NumberColumn(
-                    "Balance",
-                    format="$%.2f",
-                ),
-            },
-            num_rows="dynamic",
-            use_container_width=True,
-            hide_index=True,
-        )
-        
-        # Update the accounts in session state
-        if not edited_df.equals(accounts_df):
-            st.session_state.accounts = edited_df.to_dict('records')
-            st.success("Accounts updated successfully!")
-        
-        # Account balance visualization
-        st.subheader("Account Balances")
-        account_balance_fig = viz.plot_account_balances(pd.DataFrame(st.session_state.accounts))
-        st.plotly_chart(account_balance_fig, use_container_width=True)
-    else:
-        st.info("No accounts added yet. Use the form above to add your first account.")
-
-elif page == "Transactions":
-    st.header("Transaction Management")
-    
-    # Filter options
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        account_filter = st.multiselect(
-            "Filter by Account",
-            options=[acc["name"] for acc in st.session_state.accounts],
-            default=[]
-        )
-    with col2:
-        category_filter = st.multiselect(
-            "Filter by Category",
-            options=st.session_state.categories["category"].unique().tolist() if 'category' in st.session_state.categories else [],
-            default=[]
-        )
-    with col3:
-        date_filter = st.date_input(
-            "Date Range",
-            value=(start_date, end_date)
-        )
-    
-    # Show warning if no data is available
-    if st.session_state.transactions.empty:
-        st.warning("No transaction data available. Please import data first.")
-        st.markdown("Go to **Import Data** page to upload your financial data.")
-    else:
-        # Filter transactions based on selected filters
-        filtered_df = dh.filter_transactions(
-            st.session_state.transactions,
-            accounts=account_filter,
-            categories=category_filter,
-            start_date=date_filter[0] if len(date_filter) > 0 else None,
-            end_date=date_filter[1] if len(date_filter) > 1 else None
-        )
-        
-        # Add transaction manually
-        with st.expander("Add New Transaction"):
-            col1, col2 = st.columns(2)
-            with col1:
-                tx_date = st.date_input("Date", value=datetime.now())
-                tx_account = st.selectbox(
-                    "Account",
-                    options=[acc["name"] for acc in st.session_state.accounts],
-                    index=0 if st.session_state.accounts else None
-                )
-                tx_type = st.selectbox(
-                    "Type",
-                    options=["expense", "income", "transfer"],
-                    index=0
-                )
+    # Show sync status
+    if st.session_state.get("authenticated", False):
+        with st.sidebar.expander("Sync Status", expanded=False):
+            user_id = auth_manager.generate_user_id()
+            accounts = auth_manager.db_manager.get_bank_accounts(user_id)
             
-            with col2:
-                tx_amount = st.number_input("Amount", min_value=0.01, value=0.01, step=0.01)
-                tx_category = st.selectbox(
-                    "Category",
-                    options=st.session_state.categories["category"].unique().tolist() if 'category' in st.session_state.categories else []
-                )
-                tx_description = st.text_input("Description")
-            
-            if st.button("Add Transaction"):
-                if tx_account and tx_amount > 0:
-                    new_tx = {
-                        "date": tx_date,
-                        "account": tx_account,
-                        "type": tx_type,
-                        "amount": tx_amount,
-                        "category": tx_category,
-                        "description": tx_description
-                    }
-                    
-                    # Convert to DataFrame and append to existing transactions
-                    new_tx_df = pd.DataFrame([new_tx])
-                    if st.session_state.transactions.empty:
-                        st.session_state.transactions = new_tx_df
-                    else:
-                        st.session_state.transactions = pd.concat([st.session_state.transactions, new_tx_df], ignore_index=True)
-                    
-                    # Update account balance
-                    dh.update_account_balance(st.session_state.accounts, tx_account, tx_amount, tx_type)
-                    
-                    st.success("Transaction added successfully!")
-                    st.rerun()
-                else:
-                    st.error("Please fill in all required fields.")
-        
-        # Display transactions
-        if not filtered_df.empty:
-            st.subheader(f"Transactions ({len(filtered_df)} records)")
-            
-            # Create a copy to prevent modifying the original data
-            display_df = filtered_df.copy()
-            
-            # Format the date column for display
-            if 'date' in display_df.columns:
-                display_df['date'] = pd.to_datetime(display_df['date']).dt.date
-            
-            # Display transactions in an editable table
-            edited_df = st.data_editor(
-                display_df,
-                column_config={
-                    "date": "Date",
-                    "account": "Account",
-                    "type": st.column_config.SelectboxColumn(
-                        "Type",
-                        options=["expense", "income", "transfer"],
-                    ),
-                    "amount": st.column_config.NumberColumn(
-                        "Amount",
-                        format="$%.2f",
-                    ),
-                    "category": "Category",
-                    "description": "Description"
-                },
-                use_container_width=True,
-                hide_index=True,
-            )
-            
-            # Allow bulk categorization for selected rows
-            if st.button("Update Selected Transactions"):
-                if not edited_df.equals(display_df):
-                    # Update the transactions in session state
-                    for index, row in edited_df.iterrows():
-                        # Find the corresponding row in the original DataFrame
-                        match_mask = (st.session_state.transactions['date'] == row['date']) & \
-                                    (st.session_state.transactions['account'] == row['account']) & \
-                                    (st.session_state.transactions['amount'] == row['amount']) & \
-                                    (st.session_state.transactions['description'] == row['description'])
-                        
-                        if match_mask.any():
-                            # Update the row
-                            st.session_state.transactions.loc[match_mask, 'category'] = row['category']
-                            st.session_state.transactions.loc[match_mask, 'type'] = row['type']
-                    
-                    st.success("Transactions updated successfully!")
-                    st.rerun()
-        else:
-            st.info("No transactions match the selected filters.")
-
-elif page == "Budgeting":
-    st.header("Budgeting Tools")
-    
-    # Create tabs for different budgeting views
-    budget_tab, analysis_tab = st.tabs(["Budget Setup", "Budget Analysis"])
-    
-    with budget_tab:
-        st.subheader("Set Up Your Budget")
-        
-        # Get list of expense categories
-        if not st.session_state.categories.empty and 'category' in st.session_state.categories.columns:
-            expense_categories = st.session_state.categories[
-                st.session_state.categories['type'] == 'expense'
-            ]['category'].unique().tolist()
-        else:
-            expense_categories = []
-        
-        if not expense_categories:
-            st.warning("No expense categories found. Import transaction data or add categories first.")
-        else:
-            # Create a form for budget setup
-            budget_period = st.selectbox(
-                "Budget Period",
-                ["Monthly", "Annual"],
-                index=0
-            )
-            
-            # Create budget input fields for each category
-            budget_data = {}
-            
-            for category in expense_categories:
-                current_budget = st.session_state.budgets.get(category, 0)
-                budget_data[category] = st.number_input(
-                    f"Budget for {category} ({budget_period})",
-                    min_value=0.0,
-                    value=float(current_budget),
-                    step=10.0,
-                    format="%.2f"
-                )
-            
-            if st.button("Save Budget"):
-                st.session_state.budgets = budget_data
-                st.success("Budget saved successfully!")
-            
-            # Option to reset all budgets
-            if st.button("Reset All Budgets"):
-                st.session_state.budgets = {}
-                st.success("All budgets have been reset.")
-                st.rerun()
-    
-    with analysis_tab:
-        st.subheader("Budget Analysis")
-        
-        if not st.session_state.transactions.empty and st.session_state.budgets:
-            # Filter transactions to current month for budget analysis
-            current_month = datetime.now().month
-            current_year = datetime.now().year
-            start_of_month = datetime(current_year, current_month, 1).date()
-            
-            # Get end of month
-            if current_month == 12:
-                end_of_month = datetime(current_year + 1, 1, 1).date() - timedelta(days=1)
-            else:
-                end_of_month = datetime(current_year, current_month + 1, 1).date() - timedelta(days=1)
-            
-            # Filter transactions for the current month
-            monthly_transactions = dh.filter_transactions_by_date(
-                st.session_state.transactions,
-                start_of_month,
-                end_of_month
-            )
-            
-            # Calculate budget vs actual spending
-            budget_analysis = budget.calculate_budget_vs_actual(
-                monthly_transactions,
-                st.session_state.budgets
-            )
-            
-            # Display budget summary
-            if not budget_analysis.empty:
-                st.write(f"Budget Analysis for {datetime.now().strftime('%B %Y')}")
+            if accounts:
+                st.write(f"Connected accounts: {len(accounts)}")
                 
-                # Format the DataFrame for display
-                display_df = budget_analysis.copy()
-                display_df['budget'] = display_df['budget'].map('${:,.2f}'.format)
-                display_df['spent'] = display_df['spent'].map('${:,.2f}'.format)
-                display_df['remaining'] = display_df['remaining'].map('${:,.2f}'.format)
-                display_df['percent_used'] = display_df['percent_used'].map('{:.1f}%'.format)
+                connections = auth_manager.get_active_connections()
+                for connection in connections:
+                    last_sync = connection.get("last_sync")
+                    if last_sync:
+                        last_sync_dt = datetime.fromisoformat(last_sync)
+                        time_diff = datetime.now() - last_sync_dt
+                        
+                        if time_diff < timedelta(hours=1):
+                            st.success("✅ Synced recently")
+                        elif time_diff < timedelta(days=1):
+                            st.info("ℹ️ Synced today")
+                        else:
+                            st.warning(f"⚠️ Last synced {time_diff.days} days ago")
+            else:
+                st.warning("No accounts connected")
+    
+    return selected
+
+# Initialize app
+def initialize():
+    """Initialize the app"""
+    # Initialize encryption
+    get_fernet_key()
+    
+    # Initialize database connection
+    if "initialized" not in st.session_state:
+        auth_manager.initialize_auth()
+        st.session_state.initialized = True
+
+# Main application
+def main():
+    # Initialize
+    initialize()
+    
+    # Sidebar navigation
+    selected_page = sidebar()
+    
+    # Store navigation in session state
+    st.session_state.nav = selected_page
+    
+    # Main content based on navigation
+    if selected_page == "Dashboard":
+        transaction_dashboard.transaction_dashboard_component()
+    
+    elif selected_page == "Accounts & Transactions":
+        tabs = st.tabs(["Connected Accounts", "Transactions", "Connect Bank"])
+        
+        with tabs[0]:
+            st.header("Bank Accounts")
+            user_id = auth_manager.generate_user_id()
+            accounts = auth_manager.db_manager.get_bank_accounts(user_id)
+            
+            if accounts:
+                # Create dataframe for display
+                accounts_df = pd.DataFrame([
+                    {
+                        "Account": account["name"],
+                        "Type": account["type"],
+                        "Balance": f"{account.get('currency', '£')} {float(account['balance']):,.2f}",
+                        "Provider": account["provider"],
+                        "Last Updated": datetime.fromisoformat(account["last_updated"]).strftime("%Y-%m-%d %H:%M")
+                    }
+                    for account in accounts
+                ])
                 
                 st.dataframe(
-                    display_df,
-                    column_config={
-                        "category": "Category",
-                        "budget": "Budget",
-                        "spent": "Spent",
-                        "remaining": "Remaining",
-                        "percent_used": "% Used"
-                    },
-                    use_container_width=True,
-                    hide_index=True
+                    accounts_df,
+                    hide_index=True,
+                    use_container_width=True
                 )
-                
-                # Budget progress visualization
-                st.subheader("Budget Progress")
-                budget_progress_fig = viz.plot_budget_progress(budget_analysis)
-                st.plotly_chart(budget_progress_fig, use_container_width=True)
-                
-                # Daily spending rate
-                days_in_month = (end_of_month - start_of_month).days + 1
-                days_passed = (min(datetime.now().date(), end_of_month) - start_of_month).days + 1
-                days_remaining = days_in_month - days_passed
-                
-                st.subheader("Spending Rate")
-                col1, col2, col3 = st.columns(3)
-                
-                with col1:
-                    st.metric(
-                        label="Days in Month", 
-                        value=days_in_month
-                    )
-                
-                with col2:
-                    st.metric(
-                        label="Days Passed", 
-                        value=days_passed
-                    )
-                
-                with col3:
-                    st.metric(
-                        label="Days Remaining", 
-                        value=days_remaining
-                    )
-                
-                # Calculate daily spending metrics
-                total_budget = budget_analysis['budget'].sum()
-                total_spent = budget_analysis['spent'].sum()
-                ideal_burn_rate = total_budget / days_in_month
-                actual_burn_rate = total_spent / days_passed if days_passed > 0 else 0
-                projected_total = actual_burn_rate * days_in_month
-                
-                col1, col2, col3 = st.columns(3)
-                
-                with col1:
-                    st.metric(
-                        label="Ideal Daily Spending", 
-                        value=f"${ideal_burn_rate:.2f}"
-                    )
-                
-                with col2:
-                    st.metric(
-                        label="Actual Daily Spending", 
-                        value=f"${actual_burn_rate:.2f}",
-                        delta=f"{(actual_burn_rate - ideal_burn_rate):.2f}",
-                        delta_color="inverse"
-                    )
-                
-                with col3:
-                    st.metric(
-                        label="Projected Month Total", 
-                        value=f"${projected_total:.2f}",
-                        delta=f"{(projected_total - total_budget):.2f}",
-                        delta_color="inverse"
-                    )
             else:
-                st.info("No budget data to analyze. Set up your budgets first.")
-        elif not st.session_state.budgets:
-            st.info("No budgets set. Go to the Budget Setup tab to set up your budgets.")
-        else:
-            st.warning("No transaction data available. Please import data first.")
-
-elif page == "Import Data":
-    st.header("Import Financial Data")
-    
-    # Tabs for different import methods
-    import_tab, bank_tab, manual_tab, category_tab = st.tabs(["Import from CSV", "Connect Bank Accounts", "Manual Entry", "Manage Categories"])
-    
-    with bank_tab:
-        st.subheader("Connect Your Bank Accounts")
-        st.write("Securely connect your bank accounts to automatically import transactions.")
-
-        # Show information about TrueLayer integration
-        with st.expander("About Bank Connectivity"):
-            st.write("""
-            #### How Bank Connection Works
-            
-            This application uses TrueLayer to securely connect to your bank accounts without storing your banking credentials.
-            The connection process works as follows:
-            
-            1. You select your bank from the list of supported institutions
-            2. You're securely redirected to your bank's login page
-            3. After logging in, your bank authorizes the connection
-            4. Your transactions and balances are securely imported
-            
-            All data is transmitted using bank-level encryption and your login credentials are never stored by this application.
-            """)
-            
-            st.info("The demo version shows a simulated bank connection. In a production application, you would connect to your real bank accounts.")
+                st.info("No bank accounts connected yet. Go to the 'Connect Bank' tab to get started.")
         
-        # Display TrueLayer credentials form if needed
-        if not os.environ.get('TRUELAYER_CLIENT_ID') or not os.environ.get('TRUELAYER_CLIENT_SECRET'):
-            with st.expander("Set Up TrueLayer Credentials"):
-                st.write("""
-                ### TrueLayer API Credentials
+        with tabs[1]:
+            st.header("Transactions")
+            
+            user_id = auth_manager.generate_user_id()
+            accounts = auth_manager.db_manager.get_bank_accounts(user_id)
+            
+            if accounts:
+                # Account selector
+                account_options = ["All Accounts"] + [account["name"] for account in accounts]
+                selected_account = st.selectbox("Select Account", account_options)
                 
-                To connect to real bank accounts, you'll need to set up a TrueLayer developer account and provide your API credentials.
-                """)
+                account_id = None
+                if selected_account != "All Accounts":
+                    # Find the selected account
+                    for account in accounts:
+                        if account["name"] == selected_account:
+                            account_id = account["account_id"]
+                            break
                 
+                # Date range
                 col1, col2 = st.columns(2)
                 with col1:
-                    client_id = st.text_input("Client ID", type="password", key="tl_client_id")
+                    start_date = st.date_input("Start Date", value=datetime.now().date() - timedelta(days=30))
                 with col2:
-                    client_secret = st.text_input("Client Secret", type="password", key="tl_client_secret")
+                    end_date = st.date_input("End Date", value=datetime.now().date())
                 
-                if st.button("Save Credentials", key="save_tl_creds"):
-                    if client_id and client_secret:
-                        os.environ['TRUELAYER_CLIENT_ID'] = client_id
-                        os.environ['TRUELAYER_CLIENT_SECRET'] = client_secret
-                        st.success("TrueLayer credentials saved successfully!")
-                        st.rerun()
+                # Search filters
+                search_term = st.text_input("Search Transactions", placeholder="Search by description...")
+                
+                # Get transactions
+                transactions_df = transaction_manager.get_account_transactions(
+                    account_id=account_id,
+                    start_date=start_date,
+                    end_date=end_date
+                )
+                
+                if not transactions_df.empty:
+                    # Apply search filter if provided
+                    if search_term:
+                        transactions_df = transactions_df[
+                            transactions_df["description"].str.contains(search_term, case=False)
+                        ]
+                    
+                    # Format for display
+                    display_df = transactions_df.copy()
+                    
+                    # Ensure date is datetime and format
+                    display_df["date"] = pd.to_datetime(display_df["date"])
+                    display_df["date"] = display_df["date"].dt.strftime("%Y-%m-%d")
+                    
+                    # Format amount with currency
+                    display_df["amount"] = display_df.apply(
+                        lambda row: f"{row.get('currency', '£')} {float(row['amount']):,.2f}",
+                        axis=1
+                    )
+                    
+                    # Capitalize type and category
+                    display_df["type"] = display_df["type"].str.capitalize()
+                    display_df["category"] = display_df["category"].str.title()
+                    
+                    # Add account name column if showing all accounts
+                    if account_id is None:
+                        account_map = {account["account_id"]: account["name"] for account in accounts}
+                        display_df["account"] = display_df["account_id"].map(account_map)
+                        columns = ["date", "account", "description", "amount", "type", "category"]
                     else:
-                        st.error("Please provide both Client ID and Client Secret.")
-        
-        # Always show the TrueLayer interface
-        if tl.initialize_truelayer():
-            # Display connected accounts
-            tl.display_connected_accounts()
-    
-    with import_tab:
-        st.subheader("Import from CSV File")
-        
-        # File uploader
-        uploaded_file = st.file_uploader("Upload your transaction data in CSV format", type=["csv"])
-        
-        if uploaded_file is not None:
-            # Preview the data
-            try:
-                df = pd.read_csv(uploaded_file)
-                st.write("Preview of uploaded data:")
-                st.dataframe(df.head())
-                
-                # Mapping columns
-                st.subheader("Map Columns")
-                st.write("Select which columns in your CSV correspond to the required fields")
-                
-                # Get column names from the uploaded file
-                column_options = [""] + df.columns.tolist()
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    date_col = st.selectbox("Date Column", column_options, index=0)
-                    description_col = st.selectbox("Description Column", column_options, index=0)
-                    amount_col = st.selectbox("Amount Column", column_options, index=0)
-                
-                with col2:
-                    account_col = st.selectbox("Account Column", column_options, index=0)
-                    category_col = st.selectbox("Category Column (optional)", column_options, index=0)
-                    type_col = st.selectbox("Transaction Type Column (optional)", column_options, index=0)
-                
-                # Options for date format
-                date_format = st.selectbox(
-                    "Date Format",
-                    [
-                        "%Y-%m-%d",  # 2023-01-31
-                        "%m/%d/%Y",  # 01/31/2023
-                        "%d/%m/%Y",  # 31/01/2023
-                        "%m-%d-%Y",  # 01-31-2023
-                        "%d-%m-%Y",  # 31-01-2023
-                        "%Y/%m/%d"   # 2023/01/31
-                    ],
-                    index=0
-                )
-                
-                # Amount format handling
-                amount_multiplier = st.selectbox(
-                    "Amount Sign Convention",
-                    [
-                        "Positive for income, negative for expenses",
-                        "Positive for expenses, negative for income",
-                        "All positive, use type column to distinguish"
-                    ],
-                    index=0
-                )
-                
-                # Process and import the data
-                if st.button("Import Data"):
-                    if date_col and amount_col and description_col:
-                        # Process the data
-                        processed_df = dh.process_imported_data(
-                            df,
-                            date_col=date_col,
-                            description_col=description_col,
-                            amount_col=amount_col,
-                            account_col=account_col,
-                            category_col=category_col,
-                            type_col=type_col,
-                            date_format=date_format,
-                            amount_multiplier=amount_multiplier
-                        )
-                        
-                        # Update session state with the imported data
-                        if st.session_state.transactions.empty:
-                            st.session_state.transactions = processed_df
-                        else:
-                            # Concat without duplicates
-                            st.session_state.transactions = pd.concat(
-                                [st.session_state.transactions, processed_df],
-                                ignore_index=True
-                            ).drop_duplicates()
-                        
-                        # Extract and store unique categories
-                        if 'category' in processed_df.columns:
-                            new_categories = processed_df[['category']].drop_duplicates()
-                            if not new_categories.empty:
-                                new_categories['type'] = new_categories['category'].apply(
-                                    lambda x: 'expense' if x.lower() in ['groceries', 'rent', 'utilities', 'dining', 'transportation', 'entertainment', 'shopping'] else 'income'
-                                )
-                                
-                                if st.session_state.categories.empty:
-                                    st.session_state.categories = new_categories
-                                else:
-                                    # Combine categories without duplicates
-                                    combined = pd.concat(
-                                        [st.session_state.categories, new_categories],
-                                        ignore_index=True
-                                    ).drop_duplicates(subset=['category'])
-                                    st.session_state.categories = combined
-                        
-                        st.success(f"Successfully imported {len(processed_df)} transactions!")
-                        st.rerun()
-                    else:
-                        st.error("Please map all required columns before importing.")
-            except Exception as e:
-                st.error(f"Error processing the file: {str(e)}")
-        
-        # Sample template for download
-        st.markdown("### Need a template?")
-        st.write("Download a sample CSV template to format your data:")
-        
-        sample_data = {
-            "Date": ["2023-01-15", "2023-01-20", "2023-01-25"],
-            "Description": ["Grocery Store", "Salary Deposit", "Electric Bill"],
-            "Amount": [-125.45, 2500.00, -85.20],
-            "Account": ["Checking", "Checking", "Credit Card"],
-            "Category": ["Groceries", "Income", "Utilities"]
-        }
-        sample_df = pd.DataFrame(sample_data)
-        
-        csv = sample_df.to_csv(index=False)
-        st.download_button(
-            label="Download CSV Template",
-            data=csv,
-            file_name="transaction_template.csv",
-            mime="text/csv"
-        )
-    
-    with manual_tab:
-        st.subheader("Bulk Transaction Entry")
-        
-        # Create a dataframe with empty rows for manual entry
-        empty_rows = 5
-        # Use actual datetime objects for date column
-        today = datetime.now().date()
-        empty_data = {
-            "date": [today] * empty_rows,
-            "description": [""] * empty_rows,
-            "amount": [0.0] * empty_rows,
-            "account": [""] * empty_rows,
-            "category": [""] * empty_rows,
-            "type": ["expense"] * empty_rows
-        }
-        empty_df = pd.DataFrame(empty_data)
-        
-        # Create an editable dataframe
-        manual_df = st.data_editor(
-            empty_df,
-            column_config={
-                "date": st.column_config.DatetimeColumn("Date", format="YYYY-MM-DD"),
-                "description": "Description",
-                "amount": st.column_config.NumberColumn(
-                    "Amount",
-                    min_value=0.01,
-                    format="%.2f",
-                ),
-                "account": st.column_config.SelectboxColumn(
-                    "Account",
-                    options=[acc["name"] for acc in st.session_state.accounts],
-                ),
-                "category": st.column_config.SelectboxColumn(
-                    "Category",
-                    options=st.session_state.categories["category"].unique().tolist() if not st.session_state.categories.empty and 'category' in st.session_state.categories else [],
-                ),
-                "type": st.column_config.SelectboxColumn(
-                    "Type",
-                    options=["expense", "income", "transfer"],
-                )
-            },
-            num_rows="dynamic",
-            use_container_width=True,
-            hide_index=True,
-        )
-        
-        if st.button("Add Transactions"):
-            # Remove empty rows
-            valid_df = manual_df.dropna(subset=["date", "amount", "account"])
-            
-            if not valid_df.empty:
-                # Update session state with the manually entered data
-                if st.session_state.transactions.empty:
-                    st.session_state.transactions = valid_df
+                        columns = ["date", "description", "amount", "type", "category"]
+                    
+                    # Select and rename columns
+                    display_df = display_df[columns]
+                    display_df.columns = [col.capitalize() for col in columns]
+                    
+                    # Show dataframe
+                    st.dataframe(
+                        display_df,
+                        hide_index=True,
+                        use_container_width=True
+                    )
+                    
+                    # Show download button
+                    csv = display_df.to_csv(index=False)
+                    st.download_button(
+                        "Download CSV",
+                        csv,
+                        f"transactions_{start_date}_to_{end_date}.csv",
+                        "text/csv",
+                        key="download-csv"
+                    )
+                    
+                    # Show stats
+                    st.caption(f"Showing {len(display_df)} transactions from {start_date} to {end_date}")
                 else:
-                    st.session_state.transactions = pd.concat(
-                        [st.session_state.transactions, valid_df],
-                        ignore_index=True
-                    )
-                
-                # Update account balances
-                for _, row in valid_df.iterrows():
-                    dh.update_account_balance(
-                        st.session_state.accounts,
-                        row["account"],
-                        row["amount"],
-                        row["type"]
-                    )
-                
-                st.success(f"Successfully added {len(valid_df)} transactions!")
-                st.rerun()
+                    st.info("No transactions found for the selected criteria")
             else:
-                st.warning("No valid transactions to add. Please fill in at least date, amount, and account fields.")
-    
-    with category_tab:
-        st.subheader("Manage Transaction Categories")
+                st.info("No bank accounts connected yet. Go to the 'Connect Bank' tab to get started.")
         
-        # Display existing categories
-        if not st.session_state.categories.empty:
-            # Create a copy to avoid modifying the original
-            category_df = st.session_state.categories.copy()
+        with tabs[2]:
+            bank_connection.bank_connection_component()
+    
+    elif selected_page == "Budgeting":
+        st.header("Budgeting")
+        
+        # Check if authenticated
+        if not st.session_state.get("authenticated", False):
+            st.info("Connect a bank account to use budgeting features")
+            if st.button("Connect Bank Account"):
+                # Switch to connect bank page
+                st.session_state.nav = "Accounts & Transactions"
+                st.rerun()
+            return
+        
+        # Get transactions for category selection
+        user_id = auth_manager.generate_user_id()
+        transactions_df = transaction_manager.get_account_transactions(
+            start_date=datetime.now().date() - timedelta(days=90),
+            end_date=datetime.now().date()
+        )
+        
+        if transactions_df.empty:
+            st.info("No transaction data available. Sync your accounts to use budgeting features.")
+            return
+        
+        # Make sure we have categories
+        transactions_df = transaction_manager.categorize_transactions(transactions_df)
+        
+        # Get existing budgets
+        budgets = auth_manager.db_manager.get_budgets(user_id)
+        
+        # Tabs for budget view and management
+        tab1, tab2 = st.tabs(["Budget Overview", "Manage Budgets"])
+        
+        with tab1:
+            st.subheader("Monthly Budget vs Actual")
             
-            # Create an editable dataframe for categories
-            edited_categories = st.data_editor(
-                category_df,
-                column_config={
-                    "category": "Category Name",
-                    "type": st.column_config.SelectboxColumn(
-                        "Type",
-                        options=["income", "expense", "transfer"],
-                    )
-                },
-                num_rows="dynamic",
-                use_container_width=True,
-                hide_index=True,
-            )
+            if not budgets:
+                st.info("No budgets set yet. Go to the 'Manage Budgets' tab to create some.")
+            else:
+                # Calculate actual spending for the current month
+                today = datetime.now().date()
+                start_of_month = datetime(today.year, today.month, 1).date()
+                
+                monthly_spending = transactions_df[
+                    (transactions_df["type"] == "expense") &
+                    (pd.to_datetime(transactions_df["date"]).dt.date >= start_of_month)
+                ]
+                
+                # Group by category
+                if not monthly_spending.empty:
+                    category_spending = monthly_spending.groupby("category")["amount"].sum()
+                    
+                    # Create a dataframe for the budget vs actual
+                    budget_vs_actual = []
+                    
+                    for category, budget_info in budgets.items():
+                        budget_amount = budget_info["amount"]
+                        actual_amount = category_spending.get(category, 0)
+                        
+                        # Calculate percentage
+                        percent = (actual_amount / budget_amount * 100) if budget_amount > 0 else 0
+                        
+                        budget_vs_actual.append({
+                            "Category": category,
+                            "Budget": budget_amount,
+                            "Actual": actual_amount,
+                            "Percent": percent,
+                            "Remaining": budget_amount - actual_amount
+                        })
+                    
+                    budget_df = pd.DataFrame(budget_vs_actual)
+                    
+                    if not budget_df.empty:
+                        # Sort by percent descending
+                        budget_df = budget_df.sort_values("Percent", ascending=False)
+                        
+                        # Create progress bars
+                        for _, row in budget_df.iterrows():
+                            cat = row["Category"]
+                            budget = row["Budget"]
+                            actual = row["Actual"]
+                            percent = row["Percent"]
+                            remaining = row["Remaining"]
+                            
+                            col1, col2 = st.columns([3, 1])
+                            
+                            with col1:
+                                st.write(f"**{cat}**")
+                                progress_color = "normal"
+                                if percent > 90:
+                                    progress_color = "off"
+                                
+                                # Cap at 100% for the progress bar
+                                bar_value = min(percent / 100, 1.0)
+                                st.progress(bar_value, text=f"{percent:.1f}%")
+                            
+                            with col2:
+                                st.write(f"£{actual:,.2f} of £{budget:,.2f}")
+                                if remaining >= 0:
+                                    st.caption(f"£{remaining:,.2f} remaining")
+                                else:
+                                    st.caption(f"£{-remaining:,.2f} over budget", unsafe_allow_html=True)
+                            
+                            st.write("---")
+                    else:
+                        st.info("No spending in budgeted categories this month.")
+                else:
+                    st.info("No spending recorded this month.")
+        
+        with tab2:
+            st.subheader("Manage Your Budgets")
             
-            if st.button("Save Categories"):
-                # Update categories in session state
-                st.session_state.categories = edited_categories
+            # Get all unique categories from transactions
+            categories = []
+            if not transactions_df.empty and 'category' in transactions_df.columns:
+                categories = sorted(transactions_df['category'].unique())
+            
+            # Show existing budgets
+            if budgets:
+                st.write("Current Budgets:")
                 
-                # Write to CSV file for persistence
-                if not os.path.exists('sample_data'):
-                    os.makedirs('sample_data')
-                edited_categories.to_csv('sample_data/categories.csv', index=False)
+                for category, budget in budgets.items():
+                    col1, col2, col3 = st.columns([2, 1, 1])
+                    
+                    with col1:
+                        st.write(f"**{category}**")
+                    
+                    with col2:
+                        st.write(f"£{budget['amount']:,.2f} / {budget['period']}")
+                    
+                    with col3:
+                        if st.button("Edit", key=f"edit_{category}"):
+                            st.session_state.edit_budget = category
+                            st.session_state.edit_amount = budget['amount']
+            
+            # Add or edit budget form
+            st.write("---")
+            
+            if hasattr(st.session_state, 'edit_budget'):
+                st.subheader(f"Edit Budget: {st.session_state.edit_budget}")
+                category = st.session_state.edit_budget
+                default_amount = st.session_state.edit_amount
+                is_edit = True
+            else:
+                st.subheader("Add New Budget")
+                if categories:
+                    category = st.selectbox("Category", categories)
+                else:
+                    category = st.text_input("Category")
+                default_amount = 0.0
+                is_edit = False
+            
+            with st.form(key="budget_form"):
+                amount = st.number_input("Budget Amount (£)", min_value=0.0, value=default_amount, step=10.0)
+                period = st.selectbox("Period", ["monthly", "weekly", "yearly"], index=0)
                 
-                st.success("Categories saved successfully!")
+                submit = st.form_submit_button("Save Budget")
+                
+                if submit and category and amount > 0:
+                    # Save budget
+                    auth_manager.db_manager.save_budget(user_id, category, amount, period)
+                    
+                    if is_edit:
+                        st.success(f"Updated budget for {category}")
+                        # Clear edit state
+                        if hasattr(st.session_state, 'edit_budget'):
+                            delattr(st.session_state, 'edit_budget')
+                        if hasattr(st.session_state, 'edit_amount'):
+                            delattr(st.session_state, 'edit_amount')
+                    else:
+                        st.success(f"Added new budget for {category}")
+                    
+                    # Refresh the page
+                    time.sleep(1)
+                    st.rerun()
+    
+    elif selected_page == "Settings":
+        st.header("Settings")
+        
+        # User information
+        user_id = auth_manager.generate_user_id()
+        
+        st.subheader("User Information")
+        st.info(f"User ID: {user_id}")
+        st.caption("This is a demo user ID. In a real app, this would be tied to your account.")
+        
+        # Bank account information
+        st.subheader("Connected Banks")
+        accounts = auth_manager.db_manager.get_bank_accounts(user_id)
+        
+        if accounts:
+            st.write(f"You have {len(accounts)} connected accounts")
+            
+            # Show connection details
+            connections = auth_manager.get_active_connections()
+            for connection in connections:
+                with st.expander(f"Connection: {connection['provider']}"):
+                    st.write(f"Provider: {connection['provider']}")
+                    if "last_sync" in connection and connection["last_sync"]:
+                        st.write(f"Last Sync: {datetime.fromisoformat(connection['last_sync']).strftime('%Y-%m-%d %H:%M')}")
+                    
+                    # Show accounts for this connection
+                    connection_accounts = [a for a in accounts if a["connection_id"] == connection["connection_id"]]
+                    for account in connection_accounts:
+                        st.write(f"• {account['name']} ({account['type']}): {account.get('currency', '£')} {float(account['balance']):,.2f}")
         else:
-            # Create a new categories dataframe
-            empty_categories = pd.DataFrame({
-                "category": ["Salary", "Groceries", "Rent", "Utilities", "Dining", "Transportation", "Entertainment", "Shopping"],
-                "type": ["income", "expense", "expense", "expense", "expense", "expense", "expense", "expense"]
-            })
-            
-            edited_categories = st.data_editor(
-                empty_categories,
-                column_config={
-                    "category": "Category Name",
-                    "type": st.column_config.SelectboxColumn(
-                        "Type",
-                        options=["income", "expense", "transfer"],
-                    )
-                },
-                num_rows="dynamic",
-                use_container_width=True,
-                hide_index=True,
-            )
-            
-            if st.button("Save Categories"):
-                # Update categories in session state
-                st.session_state.categories = edited_categories
+            st.info("No bank accounts connected.")
+            if st.button("Connect Bank Account"):
+                st.session_state.nav = "Accounts & Transactions"
+                st.rerun()
+        
+        # Data management
+        st.subheader("Data Management")
+        
+        # Sync data
+        if st.button("Sync All Transactions"):
+            with st.spinner("Syncing transactions..."):
+                results = transaction_manager.sync_all_account_transactions(force_full_sync=True)
                 
-                # Write to CSV file for persistence
-                if not os.path.exists('sample_data'):
-                    os.makedirs('sample_data')
-                edited_categories.to_csv('sample_data/categories.csv', index=False)
+                if results["success"]:
+                    st.success(f"Successfully synced {results['total_transactions']} transactions")
+                else:
+                    st.warning("Some accounts failed to sync")
                 
-                st.success("Categories saved successfully!")
+                with st.expander("Sync Details"):
+                    st.json(results)
+        
+        # About section
+        st.subheader("About")
+        st.write("""
+        This is a personal finance dashboard demo using TrueLayer for bank integration.
+        
+        The application allows you to:
+        - Connect to your bank accounts securely via TrueLayer API
+        - View transactions and account balances 
+        - Create and track budgets
+        - Visualize your spending patterns
+        
+        This is a demonstration only and should not be used for production purposes.
+        """)
+
+if __name__ == "__main__":
+    main()
