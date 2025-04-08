@@ -1,5 +1,7 @@
 {pkgs}: {
   deps = [
+    pkgs.postgresql
+    pkgs.sqlite
     pkgs.flutter
     pkgs.rustc
     pkgs.pkg-config

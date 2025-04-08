@@ -10,15 +10,12 @@ class AppConfig {
   static const String loginEndpoint = '/auth/login';
   static const String registerEndpoint = '/auth/register';
   static const String refreshTokenEndpoint = '/auth/refresh';
+  static const String callbackEndpoint = '/auth/callback';
   
   // Bank endpoints
-  static const String bankAuthLinkEndpoint = '/bank/auth-link';
-  static const String bankCallbackEndpoint = '/bank/callback';
-  static const String bankAccountsEndpoint = '/bank/accounts';
-  static const String bankSyncEndpoint = '/bank/sync';
-  
-  // Transaction endpoints
-  static const String transactionsEndpoint = '/transactions';
+  static const String bankAuthLinkEndpoint = '/auth/login';
+  static const String bankAccountsEndpoint = '/accounts';
+  static const String bankTransactionsEndpoint = '/transactions';
   
   // User endpoints
   static const String userProfileEndpoint = '/user/profile';

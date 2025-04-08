@@ -42,35 +42,58 @@ class TransactionService extends ChangeNotifier {
     notifyListeners();
     
     try {
-      String endpoint = AppConfig.transactionsEndpoint;
+      // Get the access token
+      final prefs = await SharedPreferences.getInstance();
+      final accessToken = prefs.getString(AppConfig.tokenKey);
+      
+      if (accessToken == null) {
+        _error = 'No authentication token found';
+        _isLoading = false;
+        notifyListeners();
+        return;
+      }
       
       // If account ID is provided or selected account exists, filter by account
       final selectedAccountId = accountId ?? _bankService.selectedAccount?.id;
-      if (selectedAccountId != null) {
-        endpoint += '?account_id=$selectedAccountId';
+      if (selectedAccountId == null) {
+        _error = 'No account selected';
+        _isLoading = false;
+        notifyListeners();
+        return;
       }
       
-      // Add date filters if set
-      if (_startDate != null) {
-        final startDateStr = DateFormat(AppConfig.apiDateFormat).format(_startDate!);
-        endpoint += endpoint.contains('?') ? '&' : '?';
-        endpoint += 'from_date=$startDateStr';
-      }
+      // Format dates
+      final fromDate = _startDate != null 
+          ? DateFormat(AppConfig.apiDateFormat).format(_startDate!)
+          : DateFormat(AppConfig.apiDateFormat).format(DateTime.now().subtract(Duration(days: 90)));
+          
+      final toDate = _endDate != null
+          ? DateFormat(AppConfig.apiDateFormat).format(_endDate!)
+          : DateFormat(AppConfig.apiDateFormat).format(DateTime.now());
       
-      if (_endDate != null) {
-        final endDateStr = DateFormat(AppConfig.apiDateFormat).format(_endDate!);
-        endpoint += endpoint.contains('?') ? '&' : '?';
-        endpoint += 'to_date=$endDateStr';
-      }
-      
+      final endpoint = '${AppConfig.bankTransactionsEndpoint}?access_token=$accessToken&account_id=$selectedAccountId&from_date=$fromDate&to_date=$toDate';
       final response = await _apiService.get(endpoint);
       
       if (_apiService.isSuccessful(response)) {
         final data = _apiService.parseResponse(response);
         
-        if (data['transactions'] != null) {
-          _transactions = (data['transactions'] as List)
-              .map((txJson) => Transaction.fromJson(txJson))
+        if (data['results'] != null) {
+          _transactions = (data['results'] as List)
+              .map((txJson) => Transaction(
+                id: txJson['transaction_id'],
+                accountId: selectedAccountId,
+                transactionId: txJson['transaction_id'],
+                timestamp: DateTime.parse(txJson['timestamp']),
+                description: txJson['description'],
+                amount: txJson['amount'],
+                currency: txJson['currency'] ?? 'GBP',
+                merchantName: txJson['merchant_name'],
+                reference: txJson['meta']?['reference'],
+                type: txJson['amount'] < 0 
+                    ? TransactionType.expense 
+                    : TransactionType.income,
+                category: _categorizeTransaction(txJson['description']),
+              ))
               .toList();
           
           // Sort by date (newest first)
@@ -95,6 +118,54 @@ class TransactionService extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
     }
+  }
+  
+  // Simple categorization function for transactions
+  String _categorizeTransaction(String description) {
+    final lowerDesc = description.toLowerCase();
+    
+    if (lowerDesc.contains('salary') || lowerDesc.contains('wage') || lowerDesc.contains('income')) {
+      return 'Income';
+    } else if (lowerDesc.contains('sainsbury') || lowerDesc.contains('tesco') || 
+               lowerDesc.contains('asda') || lowerDesc.contains('aldi') || 
+               lowerDesc.contains('lidl') || lowerDesc.contains('morrisons') ||
+               lowerDesc.contains('waitrose') || lowerDesc.contains('grocery')) {
+      return 'Groceries';
+    } else if (lowerDesc.contains('uber') || lowerDesc.contains('taxi') || 
+               lowerDesc.contains('bus') || lowerDesc.contains('transport') || 
+               lowerDesc.contains('train') || lowerDesc.contains('rail')) {
+      return 'Transport';
+    } else if (lowerDesc.contains('restaurant') || lowerDesc.contains('cafe') || 
+               lowerDesc.contains('coffee') || lowerDesc.contains('pub') || 
+               lowerDesc.contains('bar') || lowerDesc.contains('takeaway')) {
+      return 'Dining';
+    } else if (lowerDesc.contains('rent') || lowerDesc.contains('mortgage') || 
+               lowerDesc.contains('council tax') || lowerDesc.contains('water') || 
+               lowerDesc.contains('electric') || lowerDesc.contains('gas') ||
+               lowerDesc.contains('energy')) {
+      return 'Housing';
+    } else if (lowerDesc.contains('amazon') || lowerDesc.contains('ebay') || 
+               lowerDesc.contains('shops')) {
+      return 'Shopping';
+    } else if (lowerDesc.contains('netflix') || lowerDesc.contains('spotify') || 
+               lowerDesc.contains('cinema') || lowerDesc.contains('entertainment')) {
+      return 'Entertainment';
+    } else if (lowerDesc.contains('gym') || lowerDesc.contains('fitness') || 
+               lowerDesc.contains('health')) {
+      return 'Health';
+    } else if (lowerDesc.contains('doctor') || lowerDesc.contains('dentist') || 
+               lowerDesc.contains('pharmacy') || lowerDesc.contains('medical')) {
+      return 'Healthcare';
+    } else if (lowerDesc.contains('phone') || lowerDesc.contains('mobile') || 
+               lowerDesc.contains('broadband') || lowerDesc.contains('internet')) {
+      return 'Utilities';
+    } else if (lowerDesc.contains('insurance') || lowerDesc.contains('premium')) {
+      return 'Insurance';
+    } else if (lowerDesc.contains('transfer')) {
+      return 'Transfer';
+    }
+    
+    return 'Miscellaneous';
   }
 
   // Set filters and apply them

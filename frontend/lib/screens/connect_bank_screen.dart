@@ -68,6 +68,22 @@ class _ConnectBankScreenState extends State<ConnectBankScreen> {
               SnackBar(content: Text('Bank account connected successfully!')),
             );
             Navigator.of(context).pushReplacementNamed('/home');
+          } else if (mounted) {
+            setState(() {
+              _hasError = true;
+              _isLoading = false;
+            });
+            
+            final error = bankService.error;
+            if (error != null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Error: $error')),
+              );
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Failed to connect bank account')),
+              );
+            }
           }
         } catch (e) {
           if (mounted) {
@@ -76,11 +92,25 @@ class _ConnectBankScreenState extends State<ConnectBankScreen> {
               _isLoading = false;
             });
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Failed to connect bank account')),
+              SnackBar(content: Text('Error: ${e.toString()}')),
             );
           }
         }
       }
+    } else if (url.contains('error=')) {
+      // Handle TrueLayer error
+      final uri = Uri.parse(url);
+      final error = uri.queryParameters['error'];
+      final errorDescription = uri.queryParameters['error_description'];
+      
+      setState(() {
+        _hasError = true;
+        _isLoading = false;
+      });
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: ${errorDescription ?? error ?? "Unknown error"}')),
+      );
     }
   }
 

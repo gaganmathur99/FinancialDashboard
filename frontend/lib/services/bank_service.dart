@@ -38,14 +38,35 @@ class BankService extends ChangeNotifier {
     notifyListeners();
     
     try {
-      final response = await _apiService.get(AppConfig.bankAccountsEndpoint);
+      // Get the access token
+      final prefs = await SharedPreferences.getInstance();
+      final accessToken = prefs.getString(AppConfig.tokenKey);
+      
+      if (accessToken == null) {
+        _error = 'No authentication token found';
+        _isLoading = false;
+        notifyListeners();
+        return;
+      }
+      
+      final response = await _apiService.get('${AppConfig.bankAccountsEndpoint}?access_token=$accessToken');
       
       if (_apiService.isSuccessful(response)) {
         final data = _apiService.parseResponse(response);
         
-        if (data['accounts'] != null) {
-          _bankAccounts = (data['accounts'] as List)
-              .map((accountJson) => BankAccount.fromJson(accountJson))
+        if (data['results'] != null) {
+          _bankAccounts = (data['results'] as List)
+              .map((accountJson) => BankAccount(
+                  id: accountJson['account_id'],
+                  accountId: accountJson['account_id'],
+                  accountName: accountJson['display_name'] ?? 'Account',
+                  accountType: accountJson['account_type'] ?? 'Unknown',
+                  accountNumber: accountJson['account_number']?['number'],
+                  sortCode: accountJson['account_number']?['sort_code'],
+                  balance: accountJson['balance'] != null ? double.parse(accountJson['balance'].toString()) : 0.0,
+                  currency: accountJson['currency'] ?? 'GBP',
+                  providerId: accountJson['provider']?['provider_id'],
+                ))
               .toList();
         } else {
           _bankAccounts = [];
@@ -80,20 +101,13 @@ class BankService extends ChangeNotifier {
     notifyListeners();
     
     try {
-      final response = await _apiService.get(AppConfig.bankAuthLinkEndpoint);
+      // Our FastAPI endpoint redirects directly to TrueLayer
+      // so we just return that URL
+      final authUrl = '${AppConfig.apiBaseUrl}${AppConfig.bankAuthLinkEndpoint}';
       
-      if (_apiService.isSuccessful(response)) {
-        final data = _apiService.parseResponse(response);
-        
-        _isLoading = false;
-        notifyListeners();
-        return data['auth_url'] ?? '';
-      } else {
-        _error = _apiService.getErrorMessage(response);
-        _isLoading = false;
-        notifyListeners();
-        throw Exception(_error);
-      }
+      _isLoading = false;
+      notifyListeners();
+      return authUrl;
     } catch (e) {
       _error = 'Failed to get auth link: ${e.toString()}';
       _isLoading = false;
@@ -109,15 +123,22 @@ class BankService extends ChangeNotifier {
     notifyListeners();
     
     try {
-      final response = await _apiService.post(
-        AppConfig.bankCallbackEndpoint,
-        body: {
-          'code': code,
-          'redirect_uri': AppConfig.trueLayerRedirectUri,
-        },
+      final response = await _apiService.get(
+        '${AppConfig.callbackEndpoint}?code=$code',
+        requiresAuth: false,
       );
       
       if (_apiService.isSuccessful(response)) {
+        final data = _apiService.parseResponse(response);
+        
+        // Save tokens from response if available
+        if (data['tokens'] != null) {
+          await _apiService.saveTokens(
+            data['tokens']['access_token'],
+            data['tokens']['refresh_token'],
+          );
+        }
+        
         // Refresh the list of accounts
         await loadBankAccounts();
         
