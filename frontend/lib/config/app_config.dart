@@ -16,6 +16,7 @@ class AppConfig {
   static const String bankAuthLinkEndpoint = '/auth/login';
   static const String bankAccountsEndpoint = '/accounts';
   static const String bankTransactionsEndpoint = '/transactions';
+  static const String bankSyncEndpoint = '/accounts/sync';
   
   // User endpoints
   static const String userProfileEndpoint = '/user/profile';

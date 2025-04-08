@@ -641,7 +641,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 bankService.selectAccount(account);
               },
               onSync: () async {
-                await bankService.syncTransactions(account.id);
+                if (account.id != null) {
+                  await bankService.syncTransactions(account.id!);
+                }
                 // Refresh transactions
                 Provider.of<TransactionService>(context, listen: false)
                     .loadTransactions(accountId: account.id);

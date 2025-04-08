@@ -9,13 +9,16 @@ class ApiService {
   static const String _tokenKey = AppConfig.tokenKey;
   static const String _refreshTokenKey = AppConfig.refreshTokenKey;
   
-  Future<http.Response> get(String endpoint, {Map<String, String>? headers}) async {
-    final token = await _getToken();
+  Future<http.Response> get(String endpoint, {Map<String, String>? headers, bool requiresAuth = true}) async {
     final requestHeaders = {
       'Content-Type': 'application/json',
-      'Authorization': 'Bearer $token',
       ...?headers,
     };
+    
+    if (requiresAuth) {
+      final token = await _getToken();
+      requestHeaders['Authorization'] = 'Bearer $token';
+    }
     
     try {
       final response = await http.get(
@@ -78,13 +81,17 @@ class ApiService {
   Future<http.Response> put(String endpoint, {
     Map<String, String>? headers, 
     Object? body,
+    bool requiresAuth = true,
   }) async {
-    final token = await _getToken();
     final requestHeaders = {
       'Content-Type': 'application/json',
-      'Authorization': 'Bearer $token',
       ...?headers,
     };
+    
+    if (requiresAuth) {
+      final token = await _getToken();
+      requestHeaders['Authorization'] = 'Bearer $token';
+    }
     
     try {
       final response = await http.put(
@@ -108,13 +115,19 @@ class ApiService {
     }
   }
   
-  Future<http.Response> delete(String endpoint, {Map<String, String>? headers}) async {
-    final token = await _getToken();
+  Future<http.Response> delete(String endpoint, {
+    Map<String, String>? headers,
+    bool requiresAuth = true,
+  }) async {
     final requestHeaders = {
       'Content-Type': 'application/json',
-      'Authorization': 'Bearer $token',
       ...?headers,
     };
+    
+    if (requiresAuth) {
+      final token = await _getToken();
+      requestHeaders['Authorization'] = 'Bearer $token';
+    }
     
     try {
       final response = await http.delete(
