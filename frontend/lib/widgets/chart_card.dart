@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:fl_chart/fl_chart.dart';
+import 'package:syncfusion_flutter_charts/charts.dart';
 
 enum ChartType { pie, bar, line }
 
@@ -121,214 +121,161 @@ class ChartLegend extends StatelessWidget {
   }
 }
 
+// Data class for pie chart
+class PieChartData {
+  final String category;
+  final double value;
+  final Color color;
+
+  PieChartData({required this.category, required this.value, required this.color});
+}
+
 class PieChartSample extends StatelessWidget {
-  final List<PieChartSectionData> sections;
+  final List<PieChartData> chartData;
 
   const PieChartSample({
     Key? key,
-    required this.sections,
+    required this.chartData,
   }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    return PieChart(
-      PieChartData(
-        sectionsSpace: 0,
-        centerSpaceRadius: 40,
-        sections: sections,
-        borderData: FlBorderData(show: false),
-      ),
+    // No need to convert data, using Syncfusion chart data directly
+
+    return SfCircularChart(
+      series: <CircularSeries>[
+        PieSeries<PieChartData, String>(
+          dataSource: chartData,
+          pointColorMapper: (PieChartData data, _) => data.color,
+          xValueMapper: (PieChartData data, _) => data.category,
+          yValueMapper: (PieChartData data, _) => data.value,
+          radius: '80%',
+          innerRadius: '40%',
+        )
+      ],
     );
   }
 }
 
+// Data class for bar chart
+class BarChartData {
+  final String category;
+  final double value;
+  final Color color;
+
+  BarChartData({required this.category, required this.value, required this.color});
+}
+
 class BarChartSample extends StatelessWidget {
-  final List<BarChartGroupData> barGroups;
-  final List<String> titles;
+  final List<BarChartData> chartData;
   final double? maxY;
 
   const BarChartSample({
     Key? key,
-    required this.barGroups,
-    required this.titles,
+    required this.chartData,
     this.maxY,
   }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    return BarChart(
-      BarChartData(
-        alignment: BarChartAlignment.spaceAround,
-        maxY: maxY,
-        barTouchData: BarTouchData(enabled: false),
-        titlesData: FlTitlesData(
-          show: true,
-          bottomTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              getTitlesWidget: (value, meta) {
-                if (value < 0 || value >= titles.length) {
-                  return const Text('');
-                }
-                return Padding(
-                  padding: const EdgeInsets.only(top: 8.0),
-                  child: Text(
-                    titles[value.toInt()],
-                    style: TextStyle(
-                      color: Colors.grey[600],
-                      fontSize: 12,
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-          leftTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              reservedSize: 40,
-              getTitlesWidget: (value, meta) {
-                if (value == 0) {
-                  return const Text('');
-                }
-                return Padding(
-                  padding: const EdgeInsets.only(right: 8.0),
-                  child: Text(
-                    value.toInt().toString(),
-                    style: TextStyle(
-                      color: Colors.grey[600],
-                      fontSize: 12,
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-          topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-        ),
-        gridData: FlGridData(
-          show: true,
-          drawVerticalLine: false,
-          horizontalInterval: maxY != null ? maxY! / 5 : null,
-        ),
-        borderData: FlBorderData(show: false),
-        barGroups: barGroups,
+    // No need to convert data, using Syncfusion chart data directly
+
+    return SfCartesianChart(
+      primaryXAxis: CategoryAxis(
+        title: AxisTitle(text: 'Category'),
       ),
+      primaryYAxis: NumericAxis(
+        title: AxisTitle(text: 'Value'),
+        maximum: maxY,
+      ),
+      series: <CartesianSeries>[
+        ColumnSeries<BarChartData, String>(
+          dataSource: chartData,
+          xValueMapper: (BarChartData data, _) => data.category,
+          yValueMapper: (BarChartData data, _) => data.value,
+          pointColorMapper: (BarChartData data, _) => data.color,
+          borderRadius: BorderRadius.circular(4),
+        )
+      ],
+      tooltipBehavior: TooltipBehavior(enable: true),
     );
   }
 }
 
+// Data class for line chart
+class LineChartData {
+  final String xValue;
+  final double yValue;
+  final int seriesIndex;
+
+  LineChartData({required this.xValue, required this.yValue, required this.seriesIndex});
+}
+
 class LineChartSample extends StatelessWidget {
-  final List<LineChartBarData> lines;
-  final List<String>? xLabels;
+  final List<LineChartData> chartData;
   final double? maxY;
   final String? leftTitle;
   final String? bottomTitle;
   final bool showDots;
+  final List<Color> colors;
 
   const LineChartSample({
     Key? key,
-    required this.lines,
-    this.xLabels,
+    required this.chartData,
     this.maxY,
     this.leftTitle,
     this.bottomTitle,
     this.showDots = false,
+    this.colors = const [Colors.blue],
   }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    return LineChart(
-      LineChartData(
-        lineTouchData: LineTouchData(enabled: true),
-        gridData: FlGridData(
-          show: true,
-          drawVerticalLine: true,
-          horizontalInterval: maxY != null ? maxY! / 5 : null,
-          verticalInterval: 1,
-        ),
-        titlesData: FlTitlesData(
-          show: true,
-          bottomTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              getTitlesWidget: (value, meta) {
-                if (xLabels == null || value < 0 || value >= xLabels!.length) {
-                  return const Text('');
-                }
-                return Padding(
-                  padding: const EdgeInsets.only(top: 8.0),
-                  child: Text(
-                    xLabels![value.toInt()],
-                    style: TextStyle(
-                      color: Colors.grey[600],
-                      fontSize: 10,
-                    ),
-                  ),
-                );
-              },
-            ),
-            axisNameWidget: bottomTitle != null
-                ? Padding(
-                    padding: const EdgeInsets.only(top: 16.0),
-                    child: Text(
-                      bottomTitle!,
-                      style: TextStyle(
-                        color: Colors.grey[800],
-                        fontSize: 12,
-                      ),
-                    ),
-                  )
-                : null,
-          ),
-          leftTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              reservedSize: 40,
-              getTitlesWidget: (value, meta) {
-                if (value == 0) {
-                  return const Text('');
-                }
-                return Padding(
-                  padding: const EdgeInsets.only(right: 8.0),
-                  child: Text(
-                    value.toInt().toString(),
-                    style: TextStyle(
-                      color: Colors.grey[600],
-                      fontSize: 10,
-                    ),
-                  ),
-                );
-              },
-            ),
-            axisNameWidget: leftTitle != null
-                ? Padding(
-                    padding: const EdgeInsets.only(bottom: 16.0),
-                    child: Text(
-                      leftTitle!,
-                      style: TextStyle(
-                        color: Colors.grey[800],
-                        fontSize: 12,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  )
-                : null,
-          ),
-          topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-        ),
-        borderData: FlBorderData(
-          show: true,
-          border: Border(
-            bottom: BorderSide(color: Colors.grey.shade300),
-            left: BorderSide(color: Colors.grey.shade300),
-          ),
-        ),
-        maxY: maxY,
-        lineBarsData: lines,
+    // No need to convert data, using Syncfusion chart data directly
+    return SfCartesianChart(
+      primaryXAxis: CategoryAxis(
+        title: AxisTitle(text: bottomTitle ?? ''),
       ),
+      primaryYAxis: NumericAxis(
+        title: AxisTitle(text: leftTitle ?? ''),
+        maximum: maxY,
+      ),
+      legend: Legend(isVisible: colors.length > 1),
+      tooltipBehavior: TooltipBehavior(enable: true),
+      series: _buildSeries(chartData, colors),
     );
+  }
+  
+  List<CartesianSeries> _buildSeries(List<LineChartData> allData, List<Color> colors) {
+    // Group data by series index
+    Map<int, List<LineChartData>> seriesData = {};
+    for (var data in allData) {
+      if (!seriesData.containsKey(data.seriesIndex)) {
+        seriesData[data.seriesIndex] = [];
+      }
+      seriesData[data.seriesIndex]!.add(data);
+    }
+    
+    // Create a series for each line
+    List<CartesianSeries> result = [];
+    seriesData.forEach((index, data) {
+      result.add(
+        LineSeries<LineChartData, String>(
+          dataSource: data,
+          xValueMapper: (LineChartData data, _) => data.xValue,
+          yValueMapper: (LineChartData data, _) => data.yValue,
+          name: 'Series ${index + 1}',
+          color: index < colors.length ? colors[index] : Colors.blue,
+          markerSettings: MarkerSettings(
+            isVisible: showDots,
+            shape: DataMarkerType.circle,
+            height: 7,
+            width: 7,
+          ),
+        ),
+      );
+    });
+    
+    return result;
   }
 }

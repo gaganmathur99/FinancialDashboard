@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
-import 'package:fl_chart/fl_chart.dart';
+import 'package:syncfusion_flutter_charts/charts.dart';
 
 import '../models/models.dart';
 import '../services/services.dart';
@@ -427,8 +427,8 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
     
-    // Create a list of pie chart sections and legend items
-    final List<PieChartSectionData> sections = [];
+    // Create a list of pie chart data and legend items
+    final List<PieChartData> chartData = [];
     final List<ChartLegendItem> legendItems = [];
     
     final colors = [
@@ -449,11 +449,10 @@ class _HomeScreenState extends State<HomeScreen> {
       final color = colors[colorIndex % colors.length];
       colorIndex++;
       
-      sections.add(PieChartSectionData(
+      chartData.add(PieChartData(
+        category: category,
         value: amount,
-        title: '',
         color: color,
-        radius: 60,
       ));
       
       legendItems.add(ChartLegendItem(
@@ -465,7 +464,20 @@ class _HomeScreenState extends State<HomeScreen> {
     return ChartCard(
       title: 'Spending by Category',
       chartType: ChartType.pie,
-      chart: PieChartSample(sections: sections),
+      chart: SfCircularChart(
+        legend: Legend(isVisible: false),
+        series: <CircularSeries>[
+          DoughnutSeries<PieChartData, String>(
+            dataSource: chartData,
+            pointColorMapper: (PieChartData data, _) => data.color,
+            xValueMapper: (PieChartData data, _) => data.category,
+            yValueMapper: (PieChartData data, _) => data.value,
+            radius: '80%',
+            innerRadius: '40%',
+            enableTooltip: true,
+          ),
+        ],
+      ),
       legendItems: legendItems,
     );
   }
@@ -707,29 +719,24 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     
     // Prepare data for spending by day chart
-    final List<FlSpot> spots = [];
+    final List<LineChartData> chartData = [];
     final List<String> labels = [];
     double maxY = 0;
     
     for (int i = 0; i < days.length; i++) {
       final day = days[i];
       final amount = spendingByDay[day]!;
-      spots.add(FlSpot(i.toDouble(), amount));
-      labels.add(DateFormat('MM/dd').format(day));
+      final label = DateFormat('MM/dd').format(day);
+      labels.add(label);
+      chartData.add(LineChartData(
+        xValue: label,
+        yValue: amount,
+        seriesIndex: 0,
+      ));
       if (amount > maxY) maxY = amount;
     }
     
-    final line = LineChartBarData(
-      spots: spots,
-      isCurved: true,
-      color: AppTheme.primaryColor,
-      barWidth: 3,
-      dotData: FlDotData(show: true),
-      belowBarData: BarAreaData(
-        show: true,
-        color: AppTheme.primaryColor.withOpacity(0.2),
-      ),
-    );
+    // We'll pass chartData directly to the LineChartSample when we implement a custom adapter
     
     return SingleChildScrollView(
       padding: EdgeInsets.all(16),
@@ -741,13 +748,38 @@ class _HomeScreenState extends State<HomeScreen> {
             title: 'Daily Spending',
             subtitle: 'Last ${days.length} days',
             chartType: ChartType.line,
-            chart: LineChartSample(
-              lines: [line],
-              xLabels: labels,
-              maxY: maxY * 1.2,
-              leftTitle: 'Amount',
-              bottomTitle: 'Date',
-              showDots: true,
+            chart: SfCartesianChart(
+              primaryXAxis: CategoryAxis(
+                title: AxisTitle(text: 'Date'),
+              ),
+              primaryYAxis: NumericAxis(
+                title: AxisTitle(text: 'Amount'),
+                maximum: maxY * 1.2,
+              ),
+              tooltipBehavior: TooltipBehavior(enable: true),
+              series: <CartesianSeries>[
+                LineSeries<LineChartData, String>(
+                  dataSource: chartData,
+                  xValueMapper: (LineChartData data, _) => data.xValue,
+                  yValueMapper: (LineChartData data, _) => data.yValue,
+                  color: AppTheme.primaryColor,
+                  markerSettings: MarkerSettings(
+                    isVisible: true,
+                    shape: DataMarkerType.circle,
+                    height: 7,
+                    width: 7,
+                  ),
+                  // Enable gradient and area styling
+                  gradient: LinearGradient(
+                    colors: [
+                      AppTheme.primaryColor,
+                      AppTheme.primaryColor.withOpacity(0.5),
+                    ],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
+                ),
+              ],
             ),
           ),
           SizedBox(height: 24),
@@ -774,7 +806,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // Category pie chart
   Widget _buildCategoryPieChart(Map<String, double> categorySpending) {
-    final List<PieChartSectionData> sections = [];
+    final List<PieChartData> chartData = [];
     
     final colors = [
       Colors.blue,
@@ -794,15 +826,29 @@ class _HomeScreenState extends State<HomeScreen> {
       final color = colors[colorIndex % colors.length];
       colorIndex++;
       
-      sections.add(PieChartSectionData(
+      chartData.add(PieChartData(
+        category: category,
         value: amount,
-        title: '',
         color: color,
-        radius: 60,
       ));
     });
     
-    return PieChartSample(sections: sections);
+    return SfCircularChart(
+      legend: Legend(
+        isVisible: false, // We'll show our custom legend below
+      ),
+      series: <CircularSeries>[
+        DoughnutSeries<PieChartData, String>(
+          dataSource: chartData,
+          pointColorMapper: (PieChartData data, _) => data.color,
+          xValueMapper: (PieChartData data, _) => data.category,
+          yValueMapper: (PieChartData data, _) => data.value,
+          radius: '80%',
+          innerRadius: '40%',
+          enableTooltip: true,
+        )
+      ],
+    );
   }
 
   // Category legend items
@@ -842,37 +888,31 @@ class _HomeScreenState extends State<HomeScreen> {
     final income = transactionService.getTotalIncome();
     final expenses = transactionService.getTotalExpenses();
     
-    final barGroups = [
-      BarChartGroupData(
-        x: 0,
-        barRods: [
-          BarChartRodData(
-            toY: income,
-            color: AppTheme.incomeColor,
-            width: 20,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(4)),
-          ),
-        ],
-      ),
-      BarChartGroupData(
-        x: 1,
-        barRods: [
-          BarChartRodData(
-            toY: expenses,
-            color: AppTheme.expenseColor,
-            width: 20,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(4)),
-          ),
-        ],
-      ),
+    // Create data for the chart
+    final List<BarChartData> chartData = [
+      BarChartData(category: 'Income', value: income, color: AppTheme.incomeColor),
+      BarChartData(category: 'Expenses', value: expenses, color: AppTheme.expenseColor),
     ];
     
-    final titles = ['Income', 'Expenses'];
-    
-    return BarChartSample(
-      barGroups: barGroups,
-      titles: titles,
-      maxY: income > expenses ? income * 1.2 : expenses * 1.2,
+    return SfCartesianChart(
+      primaryXAxis: CategoryAxis(
+        title: AxisTitle(text: 'Category'),
+      ),
+      primaryYAxis: NumericAxis(
+        title: AxisTitle(text: 'Amount'),
+        maximum: income > expenses ? income * 1.2 : expenses * 1.2,
+      ),
+      series: <CartesianSeries>[
+        ColumnSeries<BarChartData, String>(
+          dataSource: chartData,
+          xValueMapper: (BarChartData data, _) => data.category,
+          yValueMapper: (BarChartData data, _) => data.value,
+          pointColorMapper: (BarChartData data, _) => data.color,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(4)),
+          width: 0.5, // Width of the bars (0.0-1.0)
+        ),
+      ],
+      tooltipBehavior: TooltipBehavior(enable: true),
     );
   }
 }
