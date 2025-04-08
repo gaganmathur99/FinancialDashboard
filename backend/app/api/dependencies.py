@@ -1,101 +1,170 @@
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
-from jose import jwt, JWTError
-from typing import Generator, Optional
+from jose import JWTError, jwt
+from datetime import datetime
 
-from backend.app.db.base import SessionLocal
-from backend.app.core.config import SECRET_KEY, ALGORITHM
-from backend.app.core.security import decode_token
-from backend.app.api.crud import crud_user
+from pydantic import ValidationError
+
+from backend.app.core.config import settings
+from backend.app.core.security import decrypt
+from backend.app.db.base import get_db
+from backend.app.crud import get_user_by_id
 from backend.app.models.user import User
+from backend.app.models.bank import BankAccount
+from backend.app.schemas.token import TokenPayload
 
-# OAuth2 password bearer token for authentication
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+# OAuth2 token URL
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/auth/login")
 
-def get_db() -> Generator:
-    """
-    Get database session
-    
-    Yields:
-        Session: Database session
-    """
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
-async def get_current_user(
-    db: Session = Depends(get_db), 
+def get_current_user(
+    db: Session = Depends(get_db),
     token: str = Depends(oauth2_scheme)
 ) -> User:
     """
-    Get current authenticated user
+    Get the current authenticated user based on the JWT token.
     
-    Args:
-        db: Database session
-        token: JWT token
+    Parameters:
+    -----------
+    db: Session
+        Database session
+    token: str
+        JWT token
         
     Returns:
-        User: User object
+    --------
+    User
+        The authenticated user
         
     Raises:
-        HTTPException: If authentication fails
+    -------
+    HTTPException
+        If authentication fails
     """
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
+    try:
+        # Decode the token
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+        token_data = TokenPayload(**payload)
+        
+        # Check token expiration
+        if datetime.fromtimestamp(token_data.exp) < datetime.utcnow():
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token expired",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+    except (JWTError, ValidationError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     
-    user_id = decode_token(token)
-    if user_id is None:
-        raise credentials_exception
+    # Get the user
+    user = get_user_by_id(db, token_data.sub)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
     
-    user = crud_user.get(db, user_id=int(user_id))
-    if user is None:
-        raise credentials_exception
+    # Check if the user is active
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Inactive user",
+        )
     
     return user
 
-async def get_current_active_user(
+
+def get_current_active_user(
     current_user: User = Depends(get_current_user),
 ) -> User:
     """
-    Get current active user
+    Get the current active user.
     
-    Args:
-        current_user: Current user
+    Parameters:
+    -----------
+    current_user: User
+        The current authenticated user
         
     Returns:
-        User: User object
+    --------
+    User
+        The authenticated active user
         
     Raises:
-        HTTPException: If user is inactive
+    -------
+    HTTPException
+        If the user is inactive
     """
     if not current_user.is_active:
-        raise HTTPException(status_code=400, detail="Inactive user")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Inactive user",
+        )
     return current_user
 
-async def get_current_admin_user(
+
+def get_current_active_superuser(
     current_user: User = Depends(get_current_user),
 ) -> User:
     """
-    Get current admin user
+    Get the current active superuser.
     
-    Args:
-        current_user: Current user
+    Parameters:
+    -----------
+    current_user: User
+        The current authenticated user
         
     Returns:
-        User: User object
+    --------
+    User
+        The authenticated active superuser
         
     Raises:
-        HTTPException: If user is not an admin
+    -------
+    HTTPException
+        If the user is not a superuser
     """
-    if not current_user.is_admin:
+    if not current_user.is_superuser:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, 
-            detail="Not enough permissions"
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions",
         )
     return current_user
+
+
+def check_bank_account_owner(
+    bank_account: BankAccount,
+    current_user: User = Depends(get_current_user),
+) -> BankAccount:
+    """
+    Check if the current user is the owner of the bank account.
+    
+    Parameters:
+    -----------
+    bank_account: BankAccount
+        The bank account to check
+    current_user: User
+        The current authenticated user
+        
+    Returns:
+    --------
+    BankAccount
+        The bank account if the user is the owner
+        
+    Raises:
+    -------
+    HTTPException
+        If the user is not the owner
+    """
+    if bank_account.user_id != current_user.id and not current_user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions",
+        )
+    
+    return bank_account

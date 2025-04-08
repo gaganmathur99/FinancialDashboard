@@ -1,1 +1,1 @@
-# API endpoints module
+# Import endpoints

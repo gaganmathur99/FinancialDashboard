@@ -1,190 +1,197 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy.orm import Session
-from typing import Any, List, Optional
-from datetime import datetime, date, timedelta
-import uuid
+from typing import Any, Dict, List, Optional
+from datetime import datetime, timedelta
 
-from backend.app.api.dependencies import get_db, get_current_active_user
-from backend.app.core import truelayer
-from backend.app.core.security import encrypt, decrypt
-from backend.app.api.crud import crud_bank
-from backend.app.api.schemas.bank import BankAccountResponse, TransactionResponse
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from sqlalchemy.orm import Session
+
+from backend.app.db.base import get_db
+from backend.app.core.truelayer import (
+    get_transactions,
+    transactions_to_dataframe,
+    refresh_access_token
+)
+from backend.app.api.dependencies import (
+    get_current_active_user,
+    check_bank_account_owner
+)
 from backend.app.models.user import User
 from backend.app.models.bank import BankAccount
+from backend.app.schemas.bank import (
+    BankAccount as BankAccountSchema,
+    Transaction as TransactionSchema
+)
+from backend.app.crud import (
+    get_bank_account_by_id,
+    get_bank_accounts_by_user_id,
+    get_active_bank_accounts_by_user_id,
+    get_decrypted_access_token,
+    get_decrypted_refresh_token,
+    update_bank_account_tokens,
+    update_last_synced,
+    get_transactions_by_bank_account_id,
+    create_transaction
+)
 
 router = APIRouter()
 
-@router.get("/", response_model=List[BankAccountResponse])
-def get_user_accounts(
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-) -> Any:
-    """
-    Get all bank accounts for the current user
-    """
-    return crud_bank.get_by_user_id(db, user_id=current_user.id)
 
-@router.get("/{account_id}", response_model=BankAccountResponse)
-def get_account(
-    account_id: int,
+@router.get("/", response_model=List[BankAccountSchema])
+def read_bank_accounts(
+    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
+    skip: int = 0,
+    limit: int = 100
 ) -> Any:
     """
-    Get a specific bank account
+    Get all bank accounts for the current user.
     """
-    account = crud_bank.get(db, bank_account_id=account_id)
-    if not account:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Account not found"
-        )
-    
-    if account.user_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
-        )
-    
-    return account
-
-@router.get("/{account_id}/refresh")
-def refresh_account(
-    account_id: int,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-) -> Any:
-    """
-    Refresh account information from TrueLayer
-    """
-    # Get bank account
-    account = crud_bank.get(db, bank_account_id=account_id)
-    if not account:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Account not found"
-        )
-    
-    if account.user_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
-        )
-    
-    # Decrypt access token
-    access_token = decrypt(account.encrypted_access_token)
-    
-    # Get updated account information
-    account_info = None
-    accounts = truelayer.get_accounts(access_token)
-    for acc in accounts:
-        if acc.get("account_id") == account.account_id:
-            account_info = acc
-            break
-    
-    if not account_info:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Account not found in TrueLayer"
-        )
-    
-    # Get balance information
-    balance_info = truelayer.get_account_balance(access_token, account.account_id)
-    
-    # Update account information
-    if balance_info:
-        account.balance = balance_info.get("current", account.balance)
-        account.available_balance = balance_info.get("available", account.available_balance)
-        account.last_synced = datetime.utcnow()
-        
-        db.add(account)
-        db.commit()
-        db.refresh(account)
-    
-    return {
-        "status": "success",
-        "message": "Account refreshed successfully",
-        "account": account
-    }
-
-@router.get("/{account_id}/transactions", response_model=List[TransactionResponse])
-def get_account_transactions(
-    account_id: int,
-    from_date: date = Query(None, description="Start date for transactions"),
-    to_date: date = Query(None, description="End date for transactions"),
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-) -> Any:
-    """
-    Get transactions for a specific bank account
-    """
-    # Get bank account
-    account = crud_bank.get(db, bank_account_id=account_id)
-    if not account:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Account not found"
-        )
-    
-    if account.user_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
-        )
-    
-    # Set default date range if not specified
-    if not from_date:
-        from_date = (datetime.now() - timedelta(days=90)).date()
-    if not to_date:
-        to_date = datetime.now().date()
-    
-    # Decrypt access token
-    access_token = decrypt(account.encrypted_access_token)
-    
-    # Get transactions from TrueLayer
-    transactions_df = truelayer.get_transactions(
-        access_token, 
-        account.account_id, 
-        from_date, 
-        to_date
+    bank_accounts = get_bank_accounts_by_user_id(
+        db=db, user_id=current_user.id, skip=skip, limit=limit
     )
-    
-    # Convert DataFrame to list of dictionaries
-    if transactions_df.empty:
-        return []
-    
-    # Convert to list of TransactionResponse objects
-    transactions = transactions_df.to_dict('records')
-    
-    return transactions
+    return bank_accounts
 
-@router.delete("/{account_id}")
-def delete_account(
-    account_id: int,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
+
+@router.get("/{account_id}", response_model=BankAccountSchema)
+def read_bank_account(
+    *,
+    db: Session = Depends(get_db),
+    account_id: int = Path(...),
+    current_user: User = Depends(get_current_active_user)
 ) -> Any:
     """
-    Delete a bank account
+    Get a specific bank account by ID.
     """
-    # Get bank account
-    account = crud_bank.get(db, bank_account_id=account_id)
-    if not account:
+    bank_account = get_bank_account_by_id(db=db, account_id=account_id)
+    if not bank_account:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Account not found"
+            detail="Bank account not found",
         )
     
-    if account.user_id != current_user.id:
+    # Check if the user is the owner of the bank account
+    check_bank_account_owner(bank_account=bank_account, current_user=current_user)
+    
+    return bank_account
+
+
+@router.get("/{account_id}/transactions", response_model=List[TransactionSchema])
+def read_transactions(
+    *,
+    db: Session = Depends(get_db),
+    account_id: int = Path(...),
+    current_user: User = Depends(get_current_active_user),
+    skip: int = 0,
+    limit: int = 100,
+    sync: bool = Query(False)
+) -> Any:
+    """
+    Get transactions for a specific bank account.
+    
+    If sync=True, it will fetch the latest transactions from TrueLayer.
+    """
+    # Get the bank account
+    bank_account = get_bank_account_by_id(db=db, account_id=account_id)
+    if not bank_account:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Bank account not found",
         )
     
-    # Delete account
-    crud_bank.delete(db, bank_account_id=account_id)
+    # Check if the user is the owner of the bank account
+    check_bank_account_owner(bank_account=bank_account, current_user=current_user)
+    
+    # Fetch the latest transactions if requested
+    if sync:
+        # Check if the access token is still valid
+        if bank_account.token_expires_at and bank_account.token_expires_at < datetime.utcnow():
+            # Refresh the access token
+            refresh_token = get_decrypted_refresh_token(bank_account)
+            token_response = refresh_access_token(refresh_token)
+            
+            # Check if the token refresh was successful
+            if "error" in token_response:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Failed to refresh access token: {token_response.get('error')}",
+                )
+            
+            # Update the access token and refresh token
+            access_token = token_response.get("access_token")
+            refresh_token = token_response.get("refresh_token")
+            expires_in = token_response.get("expires_in")
+            
+            update_bank_account_tokens(
+                db=db,
+                db_obj=bank_account,
+                access_token=access_token,
+                refresh_token=refresh_token,
+                expires_in=expires_in
+            )
+        else:
+            # Use the existing access token
+            access_token = get_decrypted_access_token(bank_account)
+        
+        # Get transactions from TrueLayer
+        from_date = None
+        if bank_account.last_synced:
+            # Get transactions since the last sync
+            from_date = bank_account.last_synced.date().isoformat()
+        
+        # Get transactions
+        transactions = get_transactions(
+            access_token=access_token,
+            account_id=bank_account.account_id,
+            from_date=from_date
+        )
+        
+        # Save transactions to the database
+        for transaction in transactions:
+            # Check if the transaction already exists
+            existing_transaction = db.query(bank_account.transactions).filter(
+                bank_account.transactions.c.transaction_id == transaction["transaction_id"]
+            ).first()
+            
+            if not existing_transaction:
+                # Create the transaction
+                transaction_in = {
+                    "bank_account_id": bank_account.id,
+                    **transaction
+                }
+                create_transaction(db=db, obj_in=transaction_in)
+        
+        # Update the last synced timestamp
+        update_last_synced(db=db, db_obj=bank_account)
+    
+    # Get transactions from the database
+    return get_transactions_by_bank_account_id(
+        db=db, bank_account_id=bank_account.id, skip=skip, limit=limit
+    )
+
+
+@router.get("/{account_id}/balance")
+def read_bank_account_balance(
+    *,
+    db: Session = Depends(get_db),
+    account_id: int = Path(...),
+    current_user: User = Depends(get_current_active_user)
+) -> Dict[str, Any]:
+    """
+    Get the balance for a specific bank account.
+    """
+    # Get the bank account
+    bank_account = get_bank_account_by_id(db=db, account_id=account_id)
+    if not bank_account:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Bank account not found",
+        )
+    
+    # Check if the user is the owner of the bank account
+    check_bank_account_owner(bank_account=bank_account, current_user=current_user)
     
     return {
-        "status": "success",
-        "message": "Account deleted successfully"
+        "balance": bank_account.balance,
+        "available_balance": bank_account.available_balance,
+        "currency": bank_account.currency,
+        "last_synced": bank_account.last_synced
     }

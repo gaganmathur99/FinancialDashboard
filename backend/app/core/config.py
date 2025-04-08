@@ -1,47 +1,56 @@
 import os
-from dotenv import load_dotenv
-from typing import Optional
+import secrets
+from typing import List, Union, Optional
 
-# Load environment variables from .env file
-load_dotenv()
+from pydantic_settings import BaseSettings
+from pydantic import AnyHttpUrl, validator
 
-# JWT Authentication settings
-SECRET_KEY = os.getenv("SECRET_KEY", "temporary_secret_key_replace_in_production")
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30 * 24 * 60  # 30 days
 
-# Database settings
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./finance_app.db")
+class Settings(BaseSettings):
+    """Application settings."""
+    
+    # API settings
+    API_V1_STR: str = "/api/v1"
+    SECRET_KEY: str = secrets.token_urlsafe(32)
+    ENCRYPTION_KEY: str = secrets.token_urlsafe(24)
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
+    
+    # Backend URL
+    SERVER_NAME: str = "localhost"
+    SERVER_HOST: AnyHttpUrl = "http://localhost:5000"
+    
+    # CORS
+    BACKEND_CORS_ORIGINS: List[AnyHttpUrl] = []
+    
+    # Database
+    DATABASE_URL: str = "sqlite:///./finance_app.db"
+    
+    # TrueLayer configuration
+    TRUELAYER_CLIENT_ID: Optional[str] = None
+    TRUELAYER_CLIENT_SECRET: Optional[str] = None
+    TRUELAYER_REDIRECT_URI: str = "https://console.truelayer.com/redirect-page"
+    TRUELAYER_PROVIDERS: str = "uk-ob-all uk-oauth-all"
+    
+    @validator("BACKEND_CORS_ORIGINS", pre=True)
+    def assemble_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:
+        """Validate and assemble CORS origins."""
+        if isinstance(v, str) and not v.startswith("["):
+            return [i.strip() for i in v.split(",")]
+        elif isinstance(v, (list, str)):
+            return v
+        raise ValueError(v)
+    
+    @validator("TRUELAYER_PROVIDERS", pre=True)
+    def assemble_providers(cls, v: Union[str, List[str]]) -> str:
+        """Validate and assemble TrueLayer providers."""
+        if isinstance(v, list):
+            return " ".join(v)
+        return v
+    
+    class Config:
+        """Pydantic settings configuration."""
+        case_sensitive = True
+        env_file = ".env"
 
-# TrueLayer settings
-TRUELAYER_CLIENT_ID = os.getenv("TRUELAYER_CLIENT_ID")
-TRUELAYER_CLIENT_SECRET = os.getenv("TRUELAYER_CLIENT_SECRET")
-TRUELAYER_REDIRECT_URI = os.getenv("TRUELAYER_REDIRECT_URI", "http://localhost:5000/api/v1/auth/truelayer/callback")
-TRUELAYER_PROVIDERS = os.getenv("TRUELAYER_PROVIDERS", "uk-ob-all uk-oauth-all")
 
-# Encryption
-FERNET_KEY = os.getenv("FERNET_KEY")  # For token encryption
-
-# API settings
-API_V1_PREFIX = "/api/v1"
-PROJECT_NAME = "Personal Finance Manager"
-DEBUG = os.getenv("DEBUG", "True").lower() == "true"
-
-# CORS settings
-ALLOWED_ORIGINS = [
-    "http://localhost",
-    "http://localhost:3000",
-    "http://localhost:5000",
-    "http://localhost:8000",
-    "https://localhost",
-    "https://localhost:3000",
-    "https://localhost:5000",
-    "https://localhost:8000",
-]
-
-# Validation
-if not TRUELAYER_CLIENT_ID:
-    print("WARNING: TRUELAYER_CLIENT_ID not set. TrueLayer integration will not work.")
-
-if not TRUELAYER_CLIENT_SECRET:
-    print("WARNING: TRUELAYER_CLIENT_SECRET not set. TrueLayer integration will not work.")
+settings = Settings()

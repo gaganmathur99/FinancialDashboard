@@ -1,170 +1,473 @@
-from typing import Optional, List, Dict, Any
+from typing import Any, Dict, List, Optional, Union
+from datetime import datetime
+
 from sqlalchemy.orm import Session
-from datetime import datetime, timedelta
 
-from backend.app.models.bank import BankAccount
-from backend.app.api.schemas.bank import BankAccountCreate, BankAccountUpdate
+from backend.app.core.security import encrypt, decrypt
+from backend.app.models.bank import BankAccount, Transaction
+from backend.app.schemas.bank import BankAccountCreate, BankAccountUpdate, TransactionCreate, TransactionUpdate
 
-def get(db: Session, bank_account_id: int) -> Optional[BankAccount]:
+
+def get_bank_account(db: Session, bank_account_id: int) -> Optional[BankAccount]:
     """
-    Get a bank account by ID
+    Get a bank account by ID.
     
-    Args:
-        db: Database session
-        bank_account_id: Bank account ID
+    Parameters:
+    -----------
+    db: Session
+        Database session
+    bank_account_id: int
+        Bank account ID
         
     Returns:
-        BankAccount: Bank account object if found, None otherwise
+    --------
+    Optional[BankAccount]
+        Bank account object if found, None otherwise
     """
     return db.query(BankAccount).filter(BankAccount.id == bank_account_id).first()
 
-def get_by_account_id(db: Session, account_id: str) -> Optional[BankAccount]:
+
+def get_bank_account_by_account_id(db: Session, account_id: str) -> Optional[BankAccount]:
     """
-    Get a bank account by TrueLayer account ID
+    Get a bank account by account ID (from the provider).
     
-    Args:
-        db: Database session
-        account_id: TrueLayer account ID
+    Parameters:
+    -----------
+    db: Session
+        Database session
+    account_id: str
+        Account ID from the provider
         
     Returns:
-        BankAccount: Bank account object if found, None otherwise
+    --------
+    Optional[BankAccount]
+        Bank account object if found, None otherwise
     """
     return db.query(BankAccount).filter(BankAccount.account_id == account_id).first()
 
-def get_by_user_id(db: Session, user_id: int) -> List[BankAccount]:
-    """
-    Get all bank accounts for a user
-    
-    Args:
-        db: Database session
-        user_id: User ID
-        
-    Returns:
-        List[BankAccount]: List of bank accounts
-    """
-    return db.query(BankAccount).filter(BankAccount.user_id == user_id).all()
 
-def create(db: Session, obj_in: BankAccountCreate) -> BankAccount:
+def get_user_bank_accounts(db: Session, user_id: int, skip: int = 0, limit: int = 100) -> List[BankAccount]:
     """
-    Create a new bank account
+    Get bank accounts for a user with pagination.
     
-    Args:
-        db: Database session
-        obj_in: Bank account data
+    Parameters:
+    -----------
+    db: Session
+        Database session
+    user_id: int
+        User ID
+    skip: int
+        Number of records to skip
+    limit: int
+        Maximum number of records to return
         
     Returns:
-        BankAccount: Created bank account
+    --------
+    List[BankAccount]
+        List of bank accounts
     """
-    db_obj = BankAccount(
-        user_id=obj_in.user_id,
-        account_id=obj_in.account_id,
-        account_name=obj_in.account_name,
-        account_type=obj_in.account_type,
-        institution=obj_in.institution,
-        account_number=obj_in.account_number,
-        currency=obj_in.currency,
-        balance=obj_in.balance,
-        encrypted_access_token=obj_in.encrypted_access_token,
-        encrypted_refresh_token=obj_in.encrypted_refresh_token,
-        last_synced=datetime.utcnow()
+    return db.query(BankAccount).filter(BankAccount.user_id == user_id).offset(skip).limit(limit).all()
+
+
+def create_bank_account(db: Session, bank_account_in: BankAccountCreate) -> BankAccount:
+    """
+    Create a new bank account.
+    
+    Parameters:
+    -----------
+    db: Session
+        Database session
+    bank_account_in: BankAccountCreate
+        Bank account creation data
+        
+    Returns:
+    --------
+    BankAccount
+        Created bank account
+    """
+    # Encrypt sensitive data
+    access_token_encrypted = encrypt(bank_account_in.access_token)
+    refresh_token_encrypted = encrypt(bank_account_in.refresh_token)
+    
+    # Create the bank account object
+    db_bank_account = BankAccount(
+        user_id=bank_account_in.user_id,
+        account_id=bank_account_in.account_id,
+        provider_id=bank_account_in.provider_id,
+        account_type=bank_account_in.account_type,
+        account_name=bank_account_in.account_name,
+        account_number=bank_account_in.account_number,
+        sort_code=bank_account_in.sort_code,
+        iban=bank_account_in.iban,
+        institution=bank_account_in.institution,
+        currency=bank_account_in.currency,
+        country=bank_account_in.country,
+        access_token=access_token_encrypted,
+        refresh_token=refresh_token_encrypted,
+        token_expiry=bank_account_in.token_expiry,
+        balance=bank_account_in.balance,
+        available_balance=bank_account_in.available_balance,
+        is_active=bank_account_in.is_active,
+        is_connected=bank_account_in.is_connected
     )
     
-    db.add(db_obj)
+    # Add to the database and commit
+    db.add(db_bank_account)
     db.commit()
-    db.refresh(db_obj)
-    return db_obj
-
-def update(db: Session, db_obj: BankAccount, obj_in: BankAccountUpdate) -> BankAccount:
-    """
-    Update a bank account
+    db.refresh(db_bank_account)
     
-    Args:
-        db: Database session
-        db_obj: Bank account object to update
-        obj_in: Bank account data
+    return db_bank_account
+
+
+def update_bank_account(db: Session, db_bank_account: BankAccount, bank_account_in: Union[BankAccountUpdate, Dict[str, Any]]) -> BankAccount:
+    """
+    Update a bank account.
+    
+    Parameters:
+    -----------
+    db: Session
+        Database session
+    db_bank_account: BankAccount
+        Existing bank account object
+    bank_account_in: Union[BankAccountUpdate, Dict[str, Any]]
+        Bank account update data
         
     Returns:
-        BankAccount: Updated bank account
+    --------
+    BankAccount
+        Updated bank account
     """
-    update_data = obj_in.dict(exclude_unset=True)
+    # Convert to dict if not already
+    update_data = bank_account_in if isinstance(bank_account_in, dict) else bank_account_in.dict(exclude_unset=True)
     
+    # Encrypt sensitive data if present
+    if "access_token" in update_data and update_data["access_token"]:
+        update_data["access_token"] = encrypt(update_data["access_token"])
+    
+    if "refresh_token" in update_data and update_data["refresh_token"]:
+        update_data["refresh_token"] = encrypt(update_data["refresh_token"])
+    
+    # Update the bank account object
     for field, value in update_data.items():
-        setattr(db_obj, field, value)
+        setattr(db_bank_account, field, value)
     
-    db.add(db_obj)
+    # Commit the changes
+    db.add(db_bank_account)
     db.commit()
-    db.refresh(db_obj)
-    return db_obj
-
-def delete(db: Session, bank_account_id: int) -> bool:
-    """
-    Delete a bank account
+    db.refresh(db_bank_account)
     
-    Args:
-        db: Database session
-        bank_account_id: Bank account ID
+    return db_bank_account
+
+
+def update_bank_account_sync_time(db: Session, db_bank_account: BankAccount) -> BankAccount:
+    """
+    Update the last sync time for a bank account.
+    
+    Parameters:
+    -----------
+    db: Session
+        Database session
+    db_bank_account: BankAccount
+        Existing bank account object
         
     Returns:
-        bool: True if deleted, False otherwise
+    --------
+    BankAccount
+        Updated bank account
     """
-    bank_account = db.query(BankAccount).filter(BankAccount.id == bank_account_id).first()
-    if not bank_account:
-        return False
+    # Update the last sync time
+    db_bank_account.last_sync = datetime.utcnow()
     
-    db.delete(bank_account)
+    # Commit the changes
+    db.add(db_bank_account)
     db.commit()
-    return True
-
-def update_balance(db: Session, bank_account_id: int, balance: float, available_balance: Optional[float] = None) -> BankAccount:
-    """
-    Update bank account balance
+    db.refresh(db_bank_account)
     
-    Args:
-        db: Database session
-        bank_account_id: Bank account ID
-        balance: Current balance
-        available_balance: Available balance
+    return db_bank_account
+
+
+def delete_bank_account(db: Session, bank_account_id: int) -> Optional[BankAccount]:
+    """
+    Delete a bank account (mark as inactive).
+    
+    Parameters:
+    -----------
+    db: Session
+        Database session
+    bank_account_id: int
+        Bank account ID
         
     Returns:
-        BankAccount: Updated bank account
+    --------
+    Optional[BankAccount]
+        Deleted bank account if found, None otherwise
     """
-    bank_account = db.query(BankAccount).filter(BankAccount.id == bank_account_id).first()
-    if not bank_account:
+    # Get the bank account
+    db_bank_account = get_bank_account(db, bank_account_id=bank_account_id)
+    if not db_bank_account:
         return None
     
-    bank_account.balance = balance
-    if available_balance is not None:
-        bank_account.available_balance = available_balance
-    bank_account.last_synced = datetime.utcnow()
+    # Mark as inactive
+    db_bank_account.is_active = False
+    db_bank_account.is_connected = False
     
-    db.add(bank_account)
+    # Commit the changes
+    db.add(db_bank_account)
     db.commit()
-    db.refresh(bank_account)
-    return bank_account
-
-def update_token(db: Session, bank_account_id: int, access_token: str, refresh_token: str, expires_in: int) -> BankAccount:
-    """
-    Update bank account tokens
+    db.refresh(db_bank_account)
     
-    Args:
-        db: Database session
-        bank_account_id: Bank account ID
-        access_token: Encrypted access token
-        refresh_token: Encrypted refresh token
-        expires_in: Token expiry in seconds
+    return db_bank_account
+
+
+def get_bank_account_tokens(db: Session, bank_account_id: int) -> Dict[str, str]:
+    """
+    Get the access and refresh tokens for a bank account.
+    
+    Parameters:
+    -----------
+    db: Session
+        Database session
+    bank_account_id: int
+        Bank account ID
         
     Returns:
-        BankAccount: Updated bank account
+    --------
+    Dict[str, str]
+        Dictionary with access_token and refresh_token
     """
-    bank_account = db.query(BankAccount).filter(BankAccount.id == bank_account_id).first()
-    if not bank_account:
+    # Get the bank account
+    db_bank_account = get_bank_account(db, bank_account_id=bank_account_id)
+    if not db_bank_account:
+        return {"access_token": "", "refresh_token": ""}
+    
+    # Decrypt the tokens
+    access_token = decrypt(db_bank_account.access_token)
+    refresh_token = decrypt(db_bank_account.refresh_token)
+    
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token
+    }
+
+
+def update_bank_account_tokens(db: Session, bank_account_id: int, access_token: str, refresh_token: str, token_expiry: Optional[datetime] = None) -> Optional[BankAccount]:
+    """
+    Update the access and refresh tokens for a bank account.
+    
+    Parameters:
+    -----------
+    db: Session
+        Database session
+    bank_account_id: int
+        Bank account ID
+    access_token: str
+        Access token
+    refresh_token: str
+        Refresh token
+    token_expiry: Optional[datetime]
+        Token expiry time
+        
+    Returns:
+    --------
+    Optional[BankAccount]
+        Updated bank account if found, None otherwise
+    """
+    # Get the bank account
+    db_bank_account = get_bank_account(db, bank_account_id=bank_account_id)
+    if not db_bank_account:
         return None
     
-    bank_account.encrypted_access_token = access_token
-    bank_account.encrypted_refresh_token = refresh_token
-    bank_account.token_expiry = datetime.utcnow() + timedelta(seconds=expires_in)
+    # Encrypt the tokens
+    db_bank_account.access_token = encrypt(access_token)
+    db_bank_account.refresh_token = encrypt(refresh_token)
     
-    db.add(bank_account)
+    # Update the token expiry
+    if token_expiry:
+        db_bank_account.token_expiry = token_expiry
+    
+    # Commit the changes
+    db.add(db_bank_account)
     db.commit()
-    db.refresh(bank_account)
-    return bank_account
+    db.refresh(db_bank_account)
+    
+    return db_bank_account
+
+
+# Transaction CRUD operations
+
+def get_transaction(db: Session, transaction_id: int) -> Optional[Transaction]:
+    """
+    Get a transaction by ID.
+    
+    Parameters:
+    -----------
+    db: Session
+        Database session
+    transaction_id: int
+        Transaction ID
+        
+    Returns:
+    --------
+    Optional[Transaction]
+        Transaction object if found, None otherwise
+    """
+    return db.query(Transaction).filter(Transaction.id == transaction_id).first()
+
+
+def get_transaction_by_transaction_id(db: Session, transaction_id: str) -> Optional[Transaction]:
+    """
+    Get a transaction by transaction ID (from the provider).
+    
+    Parameters:
+    -----------
+    db: Session
+        Database session
+    transaction_id: str
+        Transaction ID from the provider
+        
+    Returns:
+    --------
+    Optional[Transaction]
+        Transaction object if found, None otherwise
+    """
+    return db.query(Transaction).filter(Transaction.transaction_id == transaction_id).first()
+
+
+def get_account_transactions(db: Session, account_id: int, skip: int = 0, limit: int = 100) -> List[Transaction]:
+    """
+    Get transactions for a bank account with pagination.
+    
+    Parameters:
+    -----------
+    db: Session
+        Database session
+    account_id: int
+        Bank account ID
+    skip: int
+        Number of records to skip
+    limit: int
+        Maximum number of records to return
+        
+    Returns:
+    --------
+    List[Transaction]
+        List of transactions
+    """
+    return db.query(Transaction).filter(Transaction.account_id == account_id).order_by(Transaction.date.desc()).offset(skip).limit(limit).all()
+
+
+def create_transaction(db: Session, transaction_in: TransactionCreate) -> Transaction:
+    """
+    Create a new transaction.
+    
+    Parameters:
+    -----------
+    db: Session
+        Database session
+    transaction_in: TransactionCreate
+        Transaction creation data
+        
+    Returns:
+    --------
+    Transaction
+        Created transaction
+    """
+    # Check if the transaction already exists
+    existing_transaction = get_transaction_by_transaction_id(db, transaction_id=transaction_in.transaction_id)
+    if existing_transaction:
+        return existing_transaction
+    
+    # Create the transaction object
+    db_transaction = Transaction(
+        account_id=transaction_in.account_id,
+        transaction_id=transaction_in.transaction_id,
+        transaction_category=transaction_in.transaction_category,
+        date=transaction_in.date,
+        description=transaction_in.description,
+        merchant=transaction_in.merchant,
+        amount=transaction_in.amount,
+        currency=transaction_in.currency,
+        category=transaction_in.category,
+        reference=transaction_in.reference,
+        metadata=transaction_in.metadata
+    )
+    
+    # Add to the database and commit
+    db.add(db_transaction)
+    db.commit()
+    db.refresh(db_transaction)
+    
+    return db_transaction
+
+
+def update_transaction(db: Session, db_transaction: Transaction, transaction_in: Union[TransactionUpdate, Dict[str, Any]]) -> Transaction:
+    """
+    Update a transaction.
+    
+    Parameters:
+    -----------
+    db: Session
+        Database session
+    db_transaction: Transaction
+        Existing transaction object
+    transaction_in: Union[TransactionUpdate, Dict[str, Any]]
+        Transaction update data
+        
+    Returns:
+    --------
+    Transaction
+        Updated transaction
+    """
+    # Convert to dict if not already
+    update_data = transaction_in if isinstance(transaction_in, dict) else transaction_in.dict(exclude_unset=True)
+    
+    # Update the transaction object
+    for field, value in update_data.items():
+        setattr(db_transaction, field, value)
+    
+    # Commit the changes
+    db.add(db_transaction)
+    db.commit()
+    db.refresh(db_transaction)
+    
+    return db_transaction
+
+
+def create_or_update_transactions(db: Session, account_id: int, transactions: List[Dict[str, Any]]) -> List[Transaction]:
+    """
+    Create or update multiple transactions.
+    
+    Parameters:
+    -----------
+    db: Session
+        Database session
+    account_id: int
+        Bank account ID
+    transactions: List[Dict[str, Any]]
+        List of transaction data
+        
+    Returns:
+    --------
+    List[Transaction]
+        List of created or updated transactions
+    """
+    result = []
+    
+    for transaction_data in transactions:
+        # Add the account ID to the transaction data
+        transaction_data["account_id"] = account_id
+        
+        # Create the transaction schema
+        transaction_in = TransactionCreate(**transaction_data)
+        
+        # Check if the transaction already exists
+        existing_transaction = get_transaction_by_transaction_id(db, transaction_id=transaction_in.transaction_id)
+        
+        if existing_transaction:
+            # Update the existing transaction
+            result.append(update_transaction(db, existing_transaction, transaction_in))
+        else:
+            # Create a new transaction
+            result.append(create_transaction(db, transaction_in))
+    
+    return result

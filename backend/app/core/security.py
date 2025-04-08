@@ -1,125 +1,122 @@
-from datetime import datetime, timedelta
-from typing import Optional, Union, Any
-import os
 import base64
-import hashlib
-import secrets
-import string
-from jose import jwt, JWTError
+import os
+from datetime import datetime, timedelta
+from typing import Any, Optional, Union
+
+from jose import jwt
 from passlib.context import CryptContext
 from cryptography.fernet import Fernet
 
-from backend.app.core.config import SECRET_KEY, ALGORITHM, FERNET_KEY
+from backend.app.core.config import settings
 
-# Password hashing
+
+# Password context for hashing and verifying passwords
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# Fernet encryption for tokens
-if not FERNET_KEY:
-    # Generate a new Fernet key if not available
-    key = Fernet.generate_key().decode()
-    print(f"WARNING: FERNET_KEY not set. Generated temporary key: {key}")
-    print("Set this as an environment variable for production use.")
-    fernet = Fernet(key.encode())
-else:
-    fernet = Fernet(FERNET_KEY.encode())
+# Secret key for token 
+SECRET_KEY = settings.SECRET_KEY
+ALGORITHM = "HS256"
+
+# Encryption key for sensitive data
+encryption_key = base64.urlsafe_b64decode(settings.ENCRYPTION_KEY.encode("utf-8"))
+fernet = Fernet(base64.urlsafe_b64encode(encryption_key))
+
 
 def create_access_token(
     subject: Union[str, Any], expires_delta: Optional[timedelta] = None
 ) -> str:
     """
-    Create JWT access token
+    Create JWT access token.
     
-    Args:
-        subject: Token subject (typically user ID)
-        expires_delta: Token expiration time
+    Parameters:
+    -----------
+    subject: Union[str, Any]
+        Token subject
+    expires_delta: Optional[timedelta]
+        Token expiration time
         
     Returns:
-        str: JWT token
+    --------
+    str
+        JWT access token
     """
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=15)
-    
+        expire = datetime.utcnow() + timedelta(
+            minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
+        )
+        
     to_encode = {"exp": expire, "sub": str(subject)}
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-def decode_token(token: str) -> Optional[str]:
-    """
-    Decode JWT token to get user ID
-    
-    Args:
-        token: JWT token
-        
-    Returns:
-        str: User ID or None if invalid
-    """
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        return payload.get("sub")
-    except JWTError:
-        return None
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """
-    Verify password against hashed version
+    Verify password.
     
-    Args:
-        plain_password: Plain text password
-        hashed_password: Hashed password
+    Parameters:
+    -----------
+    plain_password: str
+        Plain password
+    hashed_password: str
+        Hashed password
         
     Returns:
-        bool: True if password matches
+    --------
+    bool
+        True if password is valid, False otherwise
     """
     return pwd_context.verify(plain_password, hashed_password)
 
+
 def get_password_hash(password: str) -> str:
     """
-    Hash a password
+    Hash password.
     
-    Args:
-        password: Plain text password
+    Parameters:
+    -----------
+    password: str
+        Plain password
         
     Returns:
-        str: Hashed password
+    --------
+    str
+        Hashed password
     """
     return pwd_context.hash(password)
 
-def encrypt(data: str) -> str:
-    """
-    Encrypt sensitive data
-    
-    Args:
-        data: String data to encrypt
-        
-    Returns:
-        str: Base64 encoded encrypted data
-    """
-    return fernet.encrypt(data.encode()).decode()
 
-def decrypt(encrypted_data: str) -> str:
+def encrypt(data: str) -> bytes:
     """
-    Decrypt sensitive data
+    Encrypt data.
     
-    Args:
-        encrypted_data: Base64 encoded encrypted data
+    Parameters:
+    -----------
+    data: str
+        Data to encrypt
         
     Returns:
-        str: Decrypted string
+    --------
+    bytes
+        Encrypted data
     """
-    return fernet.decrypt(encrypted_data.encode()).decode()
+    return fernet.encrypt(data.encode("utf-8"))
 
-def generate_secure_random_string(length: int = 32) -> str:
+
+def decrypt(data: bytes) -> str:
     """
-    Generate a secure random string
+    Decrypt data.
     
-    Args:
-        length: Length of the string to generate
+    Parameters:
+    -----------
+    data: bytes
+        Data to decrypt
         
     Returns:
-        str: Random string
+    --------
+    str
+        Decrypted data
     """
-    alphabet = string.ascii_letters + string.digits
-    return ''.join(secrets.choice(alphabet) for _ in range(length))
+    return fernet.decrypt(data).decode("utf-8")

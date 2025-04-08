@@ -1,89 +1,106 @@
-from pydantic import BaseModel
-from datetime import datetime
 from typing import Optional, List, Dict, Any
+from datetime import datetime
 
-class TokenData(BaseModel):
-    access_token: str
-    refresh_token: str
-    token_expiry: Optional[datetime] = None
+from pydantic import BaseModel
 
-class BankConnectionBase(BaseModel):
-    provider: str
-
-class BankConnectionCreate(BankConnectionBase):
-    user_id: str
-    access_token: str
-    refresh_token: str
-    token_expiry: Optional[datetime] = None
-
-class BankConnection(BankConnectionBase):
-    id: str
-    user_id: str
-    last_sync: Optional[datetime] = None
-    created_at: datetime
-    
-    class Config:
-        orm_mode = True
 
 class BankAccountBase(BaseModel):
-    name: str
-    type: str
-    provider: str
-    currency: str
-    balance: float
+    """Base bank account schema"""
+    account_id: Optional[str] = None
+    account_name: Optional[str] = None
+    institution: Optional[str] = None
+    account_type: Optional[str] = None
+    currency: Optional[str] = None
+    balance: Optional[float] = None
+    available_balance: Optional[float] = None
+    is_active: Optional[bool] = True
+
 
 class BankAccountCreate(BankAccountBase):
-    id: str
-    user_id: str
-    connection_id: str
-    account_data: str
+    """Bank account creation schema"""
+    account_id: str
+    account_name: str
+    institution: str
+    currency: str
+    balance: float
+    access_token: str
+    refresh_token: str
+    token_expires_at: Optional[datetime] = None
 
-class BankAccount(BankAccountBase):
-    id: str
-    user_id: str
-    connection_id: str
-    last_updated: datetime
-    created_at: datetime
-    
+
+class BankAccountUpdate(BankAccountBase):
+    """Bank account update schema"""
+    balance: Optional[float] = None
+    available_balance: Optional[float] = None
+    last_synced: Optional[datetime] = None
+    access_token: Optional[str] = None
+    refresh_token: Optional[str] = None
+    token_expires_at: Optional[datetime] = None
+
+
+class BankAccountInDBBase(BankAccountBase):
+    """Bank account in DB schema"""
+    id: Optional[int] = None
+    user_id: int
+    last_synced: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
     class Config:
         orm_mode = True
+
+
+class BankAccount(BankAccountInDBBase):
+    """Bank account schema (returned to client)"""
+    pass
+
+
+class BankAccountInDB(BankAccountInDBBase):
+    """Bank account in DB schema (with sensitive fields)"""
+    access_token: str
+    refresh_token: str
+    token_expires_at: Optional[datetime] = None
+
 
 class TransactionBase(BaseModel):
-    date: datetime
-    description: str
-    amount: float
-    currency: str
-    type: str
-    category: Optional[str] = None
+    """Base transaction schema"""
+    transaction_id: Optional[str] = None
+    transaction_category: Optional[str] = None
+    transaction_classification: Optional[str] = None
+    timestamp: Optional[str] = None
+    date: Optional[datetime] = None
+    description: Optional[str] = None
+    amount: Optional[float] = None
+    currency: Optional[str] = None
+    merchant_name: Optional[str] = None
+    meta: Optional[str] = None
+
 
 class TransactionCreate(TransactionBase):
-    id: str
-    user_id: str
-    account_id: str
-    transaction_data: str
-
-class Transaction(TransactionBase):
-    id: str
-    user_id: str
-    account_id: str
-    created_at: datetime
-    
-    class Config:
-        orm_mode = True
-
-class BudgetBase(BaseModel):
-    category: str
+    """Transaction creation schema"""
+    transaction_id: str
+    transaction_category: str
+    date: datetime
     amount: float
-    period: str
+    bank_account_id: int
 
-class BudgetCreate(BudgetBase):
-    user_id: str
 
-class Budget(BudgetBase):
-    id: int
-    user_id: str
-    created_at: datetime
-    updated_at: datetime
-    
+class TransactionUpdate(TransactionBase):
+    """Transaction update schema"""
+    pass
+
+
+class TransactionInDBBase(TransactionBase):
+    """Transaction in DB schema"""
+    id: Optional[int] = None
+    bank_account_id: int
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
     class Config:
         orm_mode = True
+
+
+class Transaction(TransactionInDBBase):
+    """Transaction schema (returned to client)"""
+    pass

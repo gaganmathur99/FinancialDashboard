@@ -1,268 +1,302 @@
-import os
 import requests
-from typing import Dict, List, Any, Optional
+import json
+from typing import Dict, List, Optional, Any
+from datetime import datetime, timedelta
 import pandas as pd
-from datetime import datetime, date, timedelta
-from urllib.parse import urlencode
 
-from backend.app.core.config import (
-    TRUELAYER_CLIENT_ID,
-    TRUELAYER_CLIENT_SECRET,
-    TRUELAYER_PROVIDERS,
-)
+from backend.app.core.config import settings
 
-# TrueLayer API Endpoints
-TRUELAYER_AUTH_URL = "https://auth.truelayer.com"
-TRUELAYER_API_URL = "https://api.truelayer.com"
-TRUELAYER_DATA_API_URL = f"{TRUELAYER_API_URL}/data/v1"
-TRUELAYER_AUTH_API_URL = f"{TRUELAYER_API_URL}/auth"
+# TrueLayer API endpoints
+AUTH_URL = "https://auth.truelayer.com"
+API_URL = "https://api.truelayer.com"
+DATA_API_URL = f"{API_URL}/data/v1"
 
-def create_auth_link(redirect_uri: str, scope: str = "info accounts balance transactions") -> str:
+
+def create_auth_link(state: str) -> str:
     """
-    Create a TrueLayer authentication link for the user to connect their bank
+    Create a TrueLayer authentication link for the user to connect their bank.
     
-    Args:
-        redirect_uri: URI to redirect to after authentication
-        scope: TrueLayer API scope
+    Parameters:
+    -----------
+    state: str
+        Random state parameter to verify the callback
         
     Returns:
-        str: Authentication URL for the user to connect their bank
+    --------
+    str
+        Authentication URL for the user to connect their bank
     """
     params = {
         "response_type": "code",
-        "client_id": TRUELAYER_CLIENT_ID,
-        "redirect_uri": redirect_uri,
-        "scope": scope,
-        "providers": TRUELAYER_PROVIDERS
+        "client_id": settings.TRUELAYER_CLIENT_ID,
+        "scope": "info accounts balance transactions cards",
+        "redirect_uri": settings.TRUELAYER_REDIRECT_URI,
+        "providers": settings.TRUELAYER_PROVIDERS,
+        "state": state
     }
     
-    auth_url = f"{TRUELAYER_AUTH_URL}/?{urlencode(params)}"
+    # Convert the parameters to a query string
+    query_string = "&".join([f"{key}={value}" for key, value in params.items()])
+    
+    # Create the authentication URL
+    auth_url = f"{AUTH_URL}/?{query_string}"
+    
     return auth_url
 
-def exchange_code_for_token(code: str, redirect_uri: str) -> Optional[Dict[str, Any]]:
+
+def exchange_auth_code(code: str) -> Dict[str, Any]:
     """
-    Exchange an authorization code for an access token
+    Exchange an authorization code for an access token.
     
-    Args:
-        code: Authorization code from the redirect
-        redirect_uri: Redirect URI used in the initial authorization
+    Parameters:
+    -----------
+    code: str
+        Authorization code from the redirect
         
     Returns:
-        dict: Access token response or None if error
+    --------
+    Dict[str, Any]
+        Access token response
     """
-    payload = {
+    data = {
+        "client_id": settings.TRUELAYER_CLIENT_ID,
+        "client_secret": settings.TRUELAYER_CLIENT_SECRET,
+        "code": code,
         "grant_type": "authorization_code",
-        "client_id": TRUELAYER_CLIENT_ID,
-        "client_secret": TRUELAYER_CLIENT_SECRET,
-        "redirect_uri": redirect_uri,
-        "code": code
+        "redirect_uri": settings.TRUELAYER_REDIRECT_URI
     }
     
-    try:
-        response = requests.post(f"{TRUELAYER_AUTH_API_URL}/token", data=payload)
-        response.raise_for_status()
-        return response.json()
-    except requests.RequestException as e:
-        print(f"Error exchanging code for token: {e}")
-        return None
-
-def refresh_access_token(refresh_token: str) -> Optional[Dict[str, Any]]:
-    """
-    Refresh an access token using a refresh token
+    response = requests.post(f"{AUTH_URL}/connect/token", data=data)
     
-    Args:
-        refresh_token: Refresh token
+    if response.status_code != 200:
+        return {"error": response.text}
+    
+    return response.json()
+
+
+def refresh_access_token(refresh_token: str) -> Dict[str, Any]:
+    """
+    Refresh an access token using a refresh token.
+    
+    Parameters:
+    -----------
+    refresh_token: str
+        Refresh token
         
     Returns:
-        dict: New access token response or None if error
+    --------
+    Dict[str, Any]
+        Access token response
     """
-    payload = {
-        "grant_type": "refresh_token",
-        "client_id": TRUELAYER_CLIENT_ID,
-        "client_secret": TRUELAYER_CLIENT_SECRET,
-        "refresh_token": refresh_token
+    data = {
+        "client_id": settings.TRUELAYER_CLIENT_ID,
+        "client_secret": settings.TRUELAYER_CLIENT_SECRET,
+        "refresh_token": refresh_token,
+        "grant_type": "refresh_token"
     }
     
-    try:
-        response = requests.post(f"{TRUELAYER_AUTH_API_URL}/token", data=payload)
-        response.raise_for_status()
-        return response.json()
-    except requests.RequestException as e:
-        print(f"Error refreshing token: {e}")
-        return None
-
-def get_user_info(access_token: str) -> Optional[Dict[str, Any]]:
-    """
-    Get user information from TrueLayer
+    response = requests.post(f"{AUTH_URL}/connect/token", data=data)
     
-    Args:
-        access_token: Access token for the user
+    if response.status_code != 200:
+        return {"error": response.text}
+    
+    return response.json()
+
+
+def get_user_info(access_token: str) -> Dict[str, Any]:
+    """
+    Get user information from TrueLayer.
+    
+    Parameters:
+    -----------
+    access_token: str
+        Access token
         
     Returns:
-        dict: User information or None if error
+    --------
+    Dict[str, Any]
+        User information
     """
     headers = {
         "Authorization": f"Bearer {access_token}"
     }
     
-    try:
-        response = requests.get(f"{TRUELAYER_DATA_API_URL}/info", headers=headers)
-        response.raise_for_status()
-        data = response.json()
-        return data.get("results", [{}])[0] if data.get("results") else {}
-    except requests.RequestException as e:
-        print(f"Error getting user info: {e}")
-        return None
+    response = requests.get(f"{DATA_API_URL}/info", headers=headers)
+    
+    if response.status_code != 200:
+        return {"error": response.text}
+    
+    return response.json().get("results", [])[0] if response.json().get("results") else {}
+
 
 def get_accounts(access_token: str) -> List[Dict[str, Any]]:
     """
-    Get accounts from TrueLayer
+    Get accounts from TrueLayer.
     
-    Args:
-        access_token: Access token for the user
+    Parameters:
+    -----------
+    access_token: str
+        Access token
         
     Returns:
-        list: List of account dictionaries
+    --------
+    List[Dict[str, Any]]
+        List of accounts
     """
     headers = {
         "Authorization": f"Bearer {access_token}"
     }
     
-    try:
-        response = requests.get(f"{TRUELAYER_DATA_API_URL}/accounts", headers=headers)
-        response.raise_for_status()
-        data = response.json()
-        return data.get("results", [])
-    except requests.RequestException as e:
-        print(f"Error getting accounts: {e}")
+    response = requests.get(f"{DATA_API_URL}/accounts", headers=headers)
+    
+    if response.status_code != 200:
         return []
-
-def get_account_balance(access_token: str, account_id: str) -> Optional[Dict[str, Any]]:
-    """
-    Get account balance from TrueLayer
     
-    Args:
-        access_token: Access token for the user
-        account_id: Account ID
+    return response.json().get("results", [])
+
+
+def get_account_details(access_token: str, account_id: str) -> Dict[str, Any]:
+    """
+    Get account details from TrueLayer.
+    
+    Parameters:
+    -----------
+    access_token: str
+        Access token
+    account_id: str
+        Account ID
         
     Returns:
-        dict: Account balance information or None if error
+    --------
+    Dict[str, Any]
+        Account details
     """
     headers = {
         "Authorization": f"Bearer {access_token}"
     }
     
-    try:
-        response = requests.get(f"{TRUELAYER_DATA_API_URL}/accounts/{account_id}/balance", headers=headers)
-        response.raise_for_status()
-        data = response.json()
-        return data.get("results", [{}])[0] if data.get("results") else None
-    except requests.RequestException as e:
-        print(f"Error getting account balance: {e}")
-        return None
-
-def get_account_details(access_token: str, account_id: str) -> Optional[Dict[str, Any]]:
-    """
-    Get account details from TrueLayer
+    response = requests.get(f"{DATA_API_URL}/accounts/{account_id}", headers=headers)
     
-    Args:
-        access_token: Access token for the user
-        account_id: Account ID
+    if response.status_code != 200:
+        return {}
+    
+    return response.json().get("results", [])[0] if response.json().get("results") else {}
+
+
+def get_account_balance(access_token: str, account_id: str) -> Dict[str, Any]:
+    """
+    Get account balance from TrueLayer.
+    
+    Parameters:
+    -----------
+    access_token: str
+        Access token
+    account_id: str
+        Account ID
         
     Returns:
-        dict: Account details or None if error
+    --------
+    Dict[str, Any]
+        Account balance
     """
     headers = {
         "Authorization": f"Bearer {access_token}"
     }
     
-    try:
-        response = requests.get(f"{TRUELAYER_DATA_API_URL}/accounts/{account_id}/details", headers=headers)
-        response.raise_for_status()
-        data = response.json()
-        return data.get("results", [{}])[0] if data.get("results") else None
-    except requests.RequestException as e:
-        print(f"Error getting account details: {e}")
-        return None
+    response = requests.get(f"{DATA_API_URL}/accounts/{account_id}/balance", headers=headers)
+    
+    if response.status_code != 200:
+        return {}
+    
+    return response.json().get("results", [])[0] if response.json().get("results") else {}
+
 
 def get_transactions(
     access_token: str, 
     account_id: str, 
-    from_date: Optional[date] = None, 
-    to_date: Optional[date] = None
-) -> pd.DataFrame:
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None
+) -> List[Dict[str, Any]]:
     """
-    Get transactions from TrueLayer
+    Get transactions from TrueLayer.
     
-    Args:
-        access_token: Access token for the user
-        account_id: Account ID
-        from_date: Start date for transactions
-        to_date: End date for transactions
+    Parameters:
+    -----------
+    access_token: str
+        Access token
+    account_id: str
+        Account ID
+    from_date: Optional[str]
+        From date in ISO format (YYYY-MM-DD)
+    to_date: Optional[str]
+        To date in ISO format (YYYY-MM-DD)
         
     Returns:
-        pd.DataFrame: DataFrame containing transaction data
+    --------
+    List[Dict[str, Any]]
+        List of transactions
     """
     headers = {
         "Authorization": f"Bearer {access_token}"
     }
     
-    # Default to last 90 days if no dates provided
-    if not from_date:
-        from_date = (datetime.now() - timedelta(days=90)).date()
-    if not to_date:
-        to_date = datetime.now().date()
+    url = f"{DATA_API_URL}/accounts/{account_id}/transactions"
     
-    # Format dates for TrueLayer API
-    from_date_str = from_date.isoformat()
-    to_date_str = to_date.isoformat()
+    params = {}
+    if from_date:
+        params["from"] = from_date
+    if to_date:
+        params["to"] = to_date
     
-    params = {
-        "from": from_date_str,
-        "to": to_date_str
-    }
+    response = requests.get(url, headers=headers, params=params)
     
-    try:
-        response = requests.get(
-            f"{TRUELAYER_DATA_API_URL}/accounts/{account_id}/transactions", 
-            headers=headers,
-            params=params
-        )
-        response.raise_for_status()
-        data = response.json()
-        transactions = data.get("results", [])
-        
-        if not transactions:
-            return pd.DataFrame()
-        
-        # Convert to DataFrame and process
-        df = pd.DataFrame(transactions)
-        
-        # Convert date strings to datetime
-        if "timestamp" in df.columns:
-            df["date"] = pd.to_datetime(df["timestamp"]).dt.date
-        
-        # Standardize column names
-        column_mapping = {
-            "transaction_id": "transaction_id",
-            "timestamp": "datetime",
-            "description": "description",
-            "amount": "amount",
-            "currency": "currency",
-            "transaction_type": "type",
-            "transaction_category": "category",
-            "merchant_name": "merchant"
+    if response.status_code != 200:
+        return []
+    
+    transactions = response.json().get("results", [])
+    
+    # Process transactions to match our database schema
+    processed_transactions = []
+    for tx in transactions:
+        processed_tx = {
+            "transaction_id": tx.get("transaction_id", ""),
+            "transaction_category": tx.get("transaction_category", ""),
+            "transaction_classification": json.dumps(tx.get("transaction_classification", [])),
+            "timestamp": tx.get("timestamp", ""),
+            "date": datetime.fromisoformat(tx.get("timestamp", "").replace("Z", "+00:00")),
+            "description": tx.get("description", ""),
+            "amount": float(tx.get("amount", "0")),
+            "currency": tx.get("currency", ""),
+            "merchant_name": tx.get("merchant_name", ""),
+            "meta": json.dumps(tx.get("meta", {}))
         }
-        
-        df = df.rename(columns={k: v for k, v in column_mapping.items() if k in df.columns})
-        
-        # Fill NaN values
-        for col in df.columns:
-            if df[col].dtype == "object":
-                df[col] = df[col].fillna("")
-                
-        return df
+        processed_transactions.append(processed_tx)
     
-    except requests.RequestException as e:
-        print(f"Error getting transactions: {e}")
-        return pd.DataFrame()
+    return processed_transactions
+
+
+def transactions_to_dataframe(transactions: List[Dict[str, Any]]) -> pd.DataFrame:
+    """
+    Convert a list of transactions to a pandas DataFrame.
+    
+    Parameters:
+    -----------
+    transactions: List[Dict[str, Any]]
+        List of transactions
+        
+    Returns:
+    --------
+    pd.DataFrame
+        Pandas DataFrame
+    """
+    df = pd.DataFrame(transactions)
+    
+    # Convert timestamp to datetime
+    if "timestamp" in df.columns:
+        df["date"] = pd.to_datetime(df["timestamp"])
+    
+    # Convert amount to float
+    if "amount" in df.columns:
+        df["amount"] = df["amount"].astype(float)
+    
+    return df
