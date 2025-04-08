@@ -1,9 +1,9 @@
 import os
 import secrets
-from typing import List, Union, Optional
+from typing import List, Union, Optional, Any
 
 from pydantic_settings import BaseSettings
-from pydantic import AnyHttpUrl, validator
+from pydantic import AnyHttpUrl, validator, field_validator
 
 
 class Settings(BaseSettings):
@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     # Backend URL
     SERVER_NAME: str = "localhost"
     SERVER_HOST: AnyHttpUrl = "http://localhost:5000"
+    SERVER_PORT: int = 5000
+    
+    # Debug mode
+    DEBUG: bool = False
     
     # CORS
     BACKEND_CORS_ORIGINS: List[AnyHttpUrl] = []
@@ -30,6 +34,10 @@ class Settings(BaseSettings):
     TRUELAYER_CLIENT_SECRET: Optional[str] = None
     TRUELAYER_REDIRECT_URI: str = "https://console.truelayer.com/redirect-page"
     TRUELAYER_PROVIDERS: str = "uk-ob-all uk-oauth-all"
+    
+    # Plaid configuration 
+    PLAID_CLIENT_ID: Optional[str] = None
+    PLAID_SECRET: Optional[str] = None
     
     @validator("BACKEND_CORS_ORIGINS", pre=True)
     def assemble_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:
@@ -46,11 +54,21 @@ class Settings(BaseSettings):
         if isinstance(v, list):
             return " ".join(v)
         return v
+        
+    @field_validator("DEBUG", mode="before")
+    def parse_debug(cls, v: Any) -> bool:
+        """Parse the DEBUG value to a boolean."""
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, str):
+            return v.lower() in ("true", "1", "t", "yes", "y")
+        return False
     
     class Config:
         """Pydantic settings configuration."""
         case_sensitive = True
         env_file = ".env"
+        extra = "ignore"
 
 
 settings = Settings()

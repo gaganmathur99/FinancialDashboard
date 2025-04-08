@@ -18,8 +18,20 @@ SECRET_KEY = settings.SECRET_KEY
 ALGORITHM = "HS256"
 
 # Encryption key for sensitive data
-encryption_key = base64.urlsafe_b64decode(settings.ENCRYPTION_KEY.encode("utf-8"))
-fernet = Fernet(base64.urlsafe_b64encode(encryption_key))
+# Generate a valid Fernet key from settings.ENCRYPTION_KEY
+# Fernet key must be 32 url-safe base64-encoded bytes
+encryption_key = settings.ENCRYPTION_KEY.encode("utf-8")
+# Ensure the key is the right size (32 bytes)
+if len(encryption_key) < 32:
+    # Pad the key if it's too short
+    encryption_key = encryption_key.ljust(32, b'=')
+elif len(encryption_key) > 32:
+    # Truncate the key if it's too long
+    encryption_key = encryption_key[:32]
+
+# Create a valid Fernet key (url-safe base64-encoded)
+fernet_key = base64.urlsafe_b64encode(encryption_key)
+fernet = Fernet(fernet_key)
 
 
 def create_access_token(

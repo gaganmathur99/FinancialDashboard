@@ -47,7 +47,7 @@ class BankAccountInDBBase(BankAccountBase):
     updated_at: Optional[datetime] = None
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class BankAccount(BankAccountInDBBase):
@@ -98,9 +98,14 @@ class TransactionInDBBase(TransactionBase):
     updated_at: Optional[datetime] = None
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class Transaction(TransactionInDBBase):
     """Transaction schema (returned to client)"""
+    pass
+
+
+class TransactionInDB(TransactionInDBBase):
+    """Transaction in DB schema (with sensitive fields)"""
     pass
