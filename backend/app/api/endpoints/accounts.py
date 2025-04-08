@@ -21,15 +21,21 @@ from backend.app.schemas.bank import (
     Transaction as TransactionSchema
 )
 from backend.app.crud import (
-    get_bank_account_by_id,
-    get_bank_accounts_by_user_id,
-    get_active_bank_accounts_by_user_id,
-    get_decrypted_access_token,
-    get_decrypted_refresh_token,
+    get_bank_account,
+    get_bank_account_by_account_id,
+    get_bank_accounts_by_user,
+    get_active_bank_accounts_by_user,
+    create_bank_account,
+    update_bank_account,
     update_bank_account_tokens,
-    update_last_synced,
-    get_transactions_by_bank_account_id,
-    create_transaction
+    get_access_token,
+    get_refresh_token,
+    get_transaction,
+    get_transaction_by_transaction_id,
+    get_transactions_by_bank_account,
+    get_transactions_by_user,
+    create_transaction,
+    update_transaction,
 )
 
 router = APIRouter()

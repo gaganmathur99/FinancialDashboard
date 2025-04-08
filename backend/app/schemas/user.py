@@ -12,7 +12,11 @@ class UserBase(BaseModel):
     is_superuser: Optional[bool] = False
     full_name: Optional[str] = None
 
-
+class UserLogin(BaseModel):
+    """User login schema"""
+    email: str
+    password: str
+    
 class UserCreate(UserBase):
     """User creation schema"""
     email: str

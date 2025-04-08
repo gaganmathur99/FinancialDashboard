@@ -4,7 +4,7 @@ class AppConfig {
   static const String appVersion = '1.0.0';
   
   // API Configuration
-  static const String apiBaseUrl = 'http://localhost:5000/api';
+  static const String apiBaseUrl = 'http://localhost:8000/api/v1';
   
   // Auth endpoints
   static const String loginEndpoint = '/auth/login';

@@ -17,14 +17,12 @@ class Settings(BaseSettings):
     
     # Backend URL
     SERVER_NAME: str = "localhost"
-    SERVER_HOST: AnyHttpUrl = "http://localhost:5000"
-    SERVER_PORT: int = 5000
+    SERVER_HOST: Any = "localhost"
+    SERVER_PORT: int = 8000
     
     # Debug mode
     DEBUG: bool = False
     
-    # CORS
-    BACKEND_CORS_ORIGINS: List[AnyHttpUrl] = []
     
     # Database
     DATABASE_URL: str = "sqlite:///./finance_app.db"
@@ -38,15 +36,10 @@ class Settings(BaseSettings):
     # Plaid configuration 
     PLAID_CLIENT_ID: Optional[str] = None
     PLAID_SECRET: Optional[str] = None
+
+    PROJECT_NAME: str = "Personal Finance Dashboard"
     
-    @validator("BACKEND_CORS_ORIGINS", pre=True)
-    def assemble_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:
-        """Validate and assemble CORS origins."""
-        if isinstance(v, str) and not v.startswith("["):
-            return [i.strip() for i in v.split(",")]
-        elif isinstance(v, (list, str)):
-            return v
-        raise ValueError(v)
+
     
     @validator("TRUELAYER_PROVIDERS", pre=True)
     def assemble_providers(cls, v: Union[str, List[str]]) -> str:

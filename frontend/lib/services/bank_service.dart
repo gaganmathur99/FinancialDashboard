@@ -22,20 +22,19 @@ class BankService extends ChangeNotifier {
   // Select an account
   void selectAccount(BankAccount? account) {
     _selectedAccount = account;
-    notifyListeners();
+    Future.microtask(() => notifyListeners());
   }
 
   // Reset selected account (to show all accounts)
   void resetSelectedAccount() {
     _selectedAccount = null;
-    notifyListeners();
+    Future.microtask(() => notifyListeners());
   }
 
   // Load bank accounts from API
   Future<void> loadBankAccounts() async {
     _isLoading = true;
     _error = null;
-    notifyListeners();
     
     try {
       // Get the access token
@@ -45,7 +44,7 @@ class BankService extends ChangeNotifier {
       if (accessToken == null) {
         _error = 'No authentication token found';
         _isLoading = false;
-        notifyListeners();
+        Future.microtask(() => notifyListeners());
         return;
       }
       
@@ -81,16 +80,16 @@ class BankService extends ChangeNotifier {
         }
         
         _isLoading = false;
-        notifyListeners();
+        Future.microtask(() => notifyListeners());
       } else {
         _error = _apiService.getErrorMessage(response);
         _isLoading = false;
-        notifyListeners();
+       Future.microtask(() => notifyListeners());
       }
     } catch (e) {
       _error = 'Failed to load bank accounts: ${e.toString()}';
       _isLoading = false;
-      notifyListeners();
+      Future.microtask(() => notifyListeners());
     }
   }
 
@@ -98,7 +97,7 @@ class BankService extends ChangeNotifier {
   Future<String> getAuthLink() async {
     _isLoading = true;
     _error = null;
-    notifyListeners();
+    Future.microtask(() => notifyListeners());
     
     try {
       // Our FastAPI endpoint redirects directly to TrueLayer
@@ -111,7 +110,7 @@ class BankService extends ChangeNotifier {
     } catch (e) {
       _error = 'Failed to get auth link: ${e.toString()}';
       _isLoading = false;
-      notifyListeners();
+      Future.microtask(() => notifyListeners());
       throw Exception(_error);
     }
   }
@@ -120,7 +119,7 @@ class BankService extends ChangeNotifier {
   Future<bool> handleCallback(String code) async {
     _isLoading = true;
     _error = null;
-    notifyListeners();
+    
     
     try {
       final response = await _apiService.get(
@@ -143,18 +142,18 @@ class BankService extends ChangeNotifier {
         await loadBankAccounts();
         
         _isLoading = false;
-        notifyListeners();
+        Future.microtask(() => notifyListeners());
         return true;
       } else {
         _error = _apiService.getErrorMessage(response);
         _isLoading = false;
-        notifyListeners();
+        Future.microtask(() => notifyListeners());
         return false;
       }
     } catch (e) {
       _error = 'Failed to handle callback: ${e.toString()}';
       _isLoading = false;
-      notifyListeners();
+      Future.microtask(() => notifyListeners());
       return false;
     }
   }
@@ -163,7 +162,6 @@ class BankService extends ChangeNotifier {
   Future<bool> syncTransactions(String accountId) async {
     _isLoading = true;
     _error = null;
-    notifyListeners();
     
     try {
       final response = await _apiService.post(
@@ -175,18 +173,18 @@ class BankService extends ChangeNotifier {
         await loadBankAccounts();
         
         _isLoading = false;
-        notifyListeners();
+        Future.microtask(() => notifyListeners());
         return true;
       } else {
         _error = _apiService.getErrorMessage(response);
         _isLoading = false;
-        notifyListeners();
+        Future.microtask(() => notifyListeners());
         return false;
       }
     } catch (e) {
       _error = 'Failed to sync transactions: ${e.toString()}';
       _isLoading = false;
-      notifyListeners();
+      Future.microtask(() => notifyListeners());
       return false;
     }
   }
@@ -195,7 +193,6 @@ class BankService extends ChangeNotifier {
   Future<bool> disconnectAccount(String accountId) async {
     _isLoading = true;
     _error = null;
-    notifyListeners();
     
     try {
       final response = await _apiService.delete(
@@ -212,18 +209,18 @@ class BankService extends ChangeNotifier {
         }
         
         _isLoading = false;
-        notifyListeners();
+        Future.microtask(() => notifyListeners());
         return true;
       } else {
         _error = _apiService.getErrorMessage(response);
         _isLoading = false;
-        notifyListeners();
+        Future.microtask(() => notifyListeners());
         return false;
       }
     } catch (e) {
       _error = 'Failed to disconnect account: ${e.toString()}';
       _isLoading = false;
-      notifyListeners();
+      Future.microtask(() => notifyListeners());
       return false;
     }
   }
@@ -243,6 +240,6 @@ class BankService extends ChangeNotifier {
   // Clear error
   void clearError() {
     _error = null;
-    notifyListeners();
+    Future.microtask(() => notifyListeners());
   }
 }

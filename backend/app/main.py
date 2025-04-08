@@ -18,14 +18,14 @@ app = FastAPI(
 )
 
 # Configure CORS
-if settings.BACKEND_CORS_ORIGINS:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=[str(origin) for origin in settings.BACKEND_CORS_ORIGINS],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Include API router
 app.include_router(api_router, prefix=settings.API_V1_STR)
@@ -78,8 +78,8 @@ if __name__ == "__main__":
     import uvicorn
     
     uvicorn.run(
-        "backend.app.main:app",
-        host=settings.SERVER_HOST,
-        port=settings.SERVER_PORT,
-        reload=settings.DEBUG,
-    )
+    "backend.app.main:app",
+    host="0.0.0.0" if settings.SERVER_HOST == "localhost" else settings.SERVER_HOST,
+    port=settings.SERVER_PORT,
+    reload=settings.DEBUG,
+)

@@ -52,14 +52,13 @@ class AuthService extends ChangeNotifier {
         },
         requiresAuth: false,
       );
-      
       if (_apiService.isSuccessful(response)) {
         final data = _apiService.parseResponse(response);
         
         // Save tokens
         await _apiService.saveTokens(
-          data['access_token'],
-          data['refresh_token'],
+          data['access_token'] ?? '',
+          data['refresh_token'] ?? '',
         );
         
         // Save user ID
@@ -98,9 +97,9 @@ class AuthService extends ChangeNotifier {
       final response = await _apiService.post(
         AppConfig.registerEndpoint,
         body: {
+          'username': fullName,
           'email': email,
           'password': password,
-          'full_name': fullName,
         },
         requiresAuth: false,
       );

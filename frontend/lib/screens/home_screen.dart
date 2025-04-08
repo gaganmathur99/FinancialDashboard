@@ -15,12 +15,16 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
-  final currencyFormat = NumberFormat.currency(locale: 'en_US', symbol: '\$');
+  final currencyFormat = NumberFormat.currency(locale: 'en_US', symbol: '\£');
 
   @override
   void initState() {
     super.initState();
-    _loadData();
+    
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+    context.read<BankService>().loadBankAccounts();
+  });
+  _loadData();
   }
 
   Future<void> _loadData() async {
@@ -168,7 +172,7 @@ class _HomeScreenState extends State<HomeScreen> {
     // Calculate total balance across all accounts
     final totalBalance = bankService.bankAccounts.fold(
       0.0,
-      (sum, account) => sum + (account.balance ?? 0),
+      (sum, account) => (sum as double) + (account.balance ?? 0),
     );
     
     // Get income and expenses
@@ -770,14 +774,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     width: 7,
                   ),
                   // Enable gradient and area styling
-                  gradient: LinearGradient(
-                    colors: [
-                      AppTheme.primaryColor,
-                      AppTheme.primaryColor.withOpacity(0.5),
-                    ],
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                  ),
                 ),
               ],
             ),

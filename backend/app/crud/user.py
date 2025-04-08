@@ -127,7 +127,7 @@ def update(
     return db_obj
 
 
-def authenticate(db: Session, *, email: str, password: str) -> Optional[User]:
+def authenticate(db: Session, email: str, password: str) -> Optional[User]:
     """
     Authenticate user.
     

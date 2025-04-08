@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:flutter/foundation.dart'; // For kIsWeb
+import 'package:url_launcher/url_launcher.dart';
+import 'dart:html' as html;
 import '../services/services.dart';
 import '../widgets/widgets.dart';
 
@@ -18,7 +21,12 @@ class _ConnectBankScreenState extends State<ConnectBankScreen> {
   @override
   void initState() {
     super.initState();
-    _getAuthLink();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _getAuthLink();
+      if (kIsWeb) {
+        _handleRedirectForWeb();
+      }
+    });
   }
 
   Future<void> _getAuthLink() async {
@@ -48,15 +56,15 @@ class _ConnectBankScreenState extends State<ConnectBankScreen> {
   }
 
   void _handleRedirect(String url) async {
-    // Check if URL contains the code parameter
     if (url.contains('code=')) {
-      // Extract the code
       final uri = Uri.parse(url);
       final code = uri.queryParameters['code'];
 
       if (code != null) {
-        setState(() {
-          _isLoading = true;
+        Future.microtask(() {
+          setState(() {
+            _isLoading = true;
+          });
         });
 
         try {
@@ -69,27 +77,25 @@ class _ConnectBankScreenState extends State<ConnectBankScreen> {
             );
             Navigator.of(context).pushReplacementNamed('/home');
           } else if (mounted) {
-            setState(() {
-              _hasError = true;
-              _isLoading = false;
+            Future.microtask(() {
+              setState(() {
+                _hasError = true;
+                _isLoading = false;
+              });
             });
-            
+
             final error = bankService.error;
-            if (error != null) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Error: $error')),
-              );
-            } else {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Failed to connect bank account')),
-              );
-            }
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Error: ${error ?? "Failed to connect bank account"}')),
+            );
           }
         } catch (e) {
           if (mounted) {
-            setState(() {
-              _hasError = true;
-              _isLoading = false;
+            Future.microtask(() {
+              setState(() {
+                _hasError = true;
+                _isLoading = false;
+              });
             });
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(content: Text('Error: ${e.toString()}')),
@@ -98,20 +104,31 @@ class _ConnectBankScreenState extends State<ConnectBankScreen> {
         }
       }
     } else if (url.contains('error=')) {
-      // Handle TrueLayer error
       final uri = Uri.parse(url);
-      final error = uri.queryParameters['error'];
       final errorDescription = uri.queryParameters['error_description'];
-      
-      setState(() {
-        _hasError = true;
-        _isLoading = false;
+
+      Future.microtask(() {
+        setState(() {
+          _hasError = true;
+          _isLoading = false;
+        });
       });
-      
+
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: ${errorDescription ?? error ?? "Unknown error"}')),
+        SnackBar(content: Text('Error: ${errorDescription ?? "Unknown error"}')),
       );
     }
+  }
+
+  void _handleRedirectForWeb() {
+    html.window.onHashChange.listen((event) {
+      final url = html.window.location.href;
+      if (url.contains('code=')) {
+        _handleRedirect(url);
+      } else if (url.contains('error=')) {
+        _handleRedirect(url);
+      }
+    });
   }
 
   @override
@@ -162,50 +179,74 @@ class _ConnectBankScreenState extends State<ConnectBankScreen> {
   }
 
   Widget _buildWebView() {
-    final controller = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(Colors.white)
-      ..setNavigationDelegate(
-        NavigationDelegate(
-          onProgress: (int progress) {
-            // Update loading bar
-          },
-          onPageStarted: (String url) {
-            // Page started loading
-          },
-          onPageFinished: (String url) {
-            setState(() {
-              _isLoading = false;
-            });
-          },
-          onWebResourceError: (WebResourceError error) {
-            setState(() {
-              _hasError = true;
-              _isLoading = false;
-            });
-          },
-          onNavigationRequest: (NavigationRequest request) {
-            // Check for redirect URL with code
-            if (request.url.contains('redirect-page') || request.url.contains('callback')) {
-              _handleRedirect(request.url);
+    if (kIsWeb) {
+      // For Flutter Web, open the URL in a new browser tab
+      return Center(
+        child: ElevatedButton(
+          onPressed: () async {
+            if (await canLaunchUrl(Uri.parse(_authUrl))) {
+              await launchUrl(Uri.parse(_authUrl), mode: LaunchMode.externalApplication);
+            } else {
+              setState(() {
+                _hasError = true;
+              });
             }
-            return NavigationDecision.navigate;
           },
+          child: Text('Open Bank Connection'),
         ),
-      )
-      ..loadRequest(Uri.parse(_authUrl));
-    
-    _webViewController = controller;
-    
-    return Stack(
-      children: [
-        WebViewWidget(controller: controller),
-        if (_isLoading)
-          Container(
-            color: Colors.white,
-            child: AppLoadingIndicator(),
+      );
+    } else {
+      // For Android/iOS, use WebView
+      final controller = WebViewController()
+        ..setJavaScriptMode(JavaScriptMode.unrestricted)
+        ..setBackgroundColor(Colors.white)
+        ..setNavigationDelegate(
+          NavigationDelegate(
+            onProgress: (int progress) {
+              // Update loading bar
+            },
+            onPageStarted: (String url) {
+              // Page started loading
+            },
+            onPageFinished: (String url) {
+              Future.microtask(() {
+                setState(() {
+                  _isLoading = false;
+                });
+              });
+            },
+            onWebResourceError: (WebResourceError error) {
+              Future.microtask(() {
+                setState(() {
+                  _hasError = true;
+                  _isLoading = false;
+                });
+              });
+            },
+            onNavigationRequest: (NavigationRequest request) {
+              // Check for redirect URL with code
+              if (request.url.contains('redirect-page') || request.url.contains('callback')) {
+                _handleRedirect(request.url);
+              }
+              return NavigationDecision.navigate;
+            },
           ),
-      ],
-    );
+        )
+        ..loadRequest(Uri.parse(_authUrl));
+
+      _webViewController = controller;
+
+      return Stack(
+        children: [
+          WebViewWidget(controller: controller),
+          if (_isLoading)
+            Container(
+              color: Colors.white,
+              child: AppLoadingIndicator(),
+            ),
+        ],
+      );
+    }
   }
+
 }

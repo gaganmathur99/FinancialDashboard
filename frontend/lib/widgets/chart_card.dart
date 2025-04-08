@@ -150,7 +150,6 @@ class PieChartSample extends StatelessWidget {
           xValueMapper: (PieChartData data, _) => data.category,
           yValueMapper: (PieChartData data, _) => data.value,
           radius: '80%',
-          innerRadius: '40%',
         )
       ],
     );

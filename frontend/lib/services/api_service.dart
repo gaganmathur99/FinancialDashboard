@@ -50,18 +50,24 @@ class ApiService {
       'Content-Type': 'application/json',
       ...?headers,
     };
-    
+    print('Request Headers: $requestHeaders');
+    print('Request body: ${jsonEncode(body)}');
     if (requiresAuth) {
       final token = await _getToken();
       requestHeaders['Authorization'] = 'Bearer $token';
     }
     
     try {
+      print('Making POST request to ${Uri.parse('$_baseUrl$endpoint')}');
       final response = await http.post(
         Uri.parse('$_baseUrl$endpoint'),
         headers: requestHeaders,
         body: body != null ? jsonEncode(body) : null,
-      ).timeout(Duration(seconds: _timeout));
+      ).timeout(const Duration(seconds: _timeout)).then((value) {
+        print('Response status code: ${value.statusCode}');
+        print('Response body: ${value.body}');
+        return value;
+      });
       
       if (requiresAuth && response.statusCode == 401) {
         // Token expired, try to refresh
