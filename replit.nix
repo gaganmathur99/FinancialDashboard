@@ -1,5 +1,6 @@
 {pkgs}: {
   deps = [
+    pkgs.flutter
     pkgs.rustc
     pkgs.pkg-config
     pkgs.openssl
