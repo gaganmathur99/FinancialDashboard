@@ -21,7 +21,7 @@ dependencies:
 
   # UI components
   cupertino_icons: ^1.0.5
-  fl_chart: ^0.55.2
+  fl_chart: ^0.61.0  # Updated to a version compatible with newer Flutter SDKs
   flutter_svg: ^2.0.6
   percent_indicator: ^4.2.3
   shimmer: ^2.0.0
