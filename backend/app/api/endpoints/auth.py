@@ -90,7 +90,6 @@ def register_user(
     """
     Register a new user and return an access token.
     """
-    print(user_in)
     # Check if the user already exists
     user = get_user_by_email(db, email=user_in.email)
     if user:
@@ -100,16 +99,22 @@ def register_user(
         )
     
     # Create the user
-    user = create_user(db, obj_in=user_in)
+    user = create_user(db, user_in=user_in)
     print(f"User created: {user}")
     # Create access token
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         subject=user.id, expires_delta=access_token_expires
     )
+    # Create refresh token
+    refresh_token_expires = timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+    refresh_token = create_access_token(
+        subject=user.id, expires_delta=refresh_token_expires
+    )
     
     return {
         "access_token": access_token,
+        "refresh_token": refresh_token,
         "token_type": "bearer"
     }
 
