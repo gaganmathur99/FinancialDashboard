@@ -23,10 +23,12 @@ from backend.app.models.user import User
 from backend.app.schemas.token import Token
 from backend.app.schemas.user import UserCreate, UserLogin
 from backend.app.schemas.bank import BankAccountCreate
-from backend.app.crud import (
+from backend.app.api.crud.crud_user import (
     authenticate,
     get_user_by_email,
     create_user,
+)
+from backend.app.api.crud.crud_bank import (
     get_bank_account_by_account_id,
     create_bank_account,
     update_bank_account_tokens
@@ -44,7 +46,6 @@ def login_access_token(
     """
     OAuth2 compatible token login, get an access token for future requests.
     """
-    print(f"Received email: {user_login.email}, password: {user_login.password}")
     # Authenticate user
     user = authenticate(db, user_login.email, user_login.password)
     if not user:

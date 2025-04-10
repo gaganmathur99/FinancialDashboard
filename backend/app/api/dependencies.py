@@ -9,7 +9,7 @@ from pydantic import ValidationError
 from backend.app.core.config import settings
 from backend.app.core.security import decrypt
 from backend.app.db.base import get_db
-from backend.app.crud import get_user_by_id
+from backend.app.api.crud.crud_user import get_user
 from backend.app.models.user import User
 from backend.app.models.bank import BankAccount
 from backend.app.schemas.token import TokenPayload
@@ -62,7 +62,7 @@ def get_current_user(
         )
     
     # Get the user
-    user = get_user_by_id(db, token_data.sub)
+    user = get_user(db, token_data.sub)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

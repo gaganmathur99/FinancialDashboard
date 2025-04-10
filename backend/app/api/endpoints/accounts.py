@@ -20,13 +20,6 @@ from backend.app.schemas.bank import (
     BankAccount as BankAccountSchema,
     Transaction as TransactionSchema
 )
-from backend.app.crud import (
-    get_bank_account_by_account_id,
-)
-
-from backend.app.crud.bank import (
-    get_transactions_by_bank_account,
-)
 
 from backend.app.api.crud.crud_bank import (
     get_bank_account_by_account_id,
@@ -36,6 +29,8 @@ from backend.app.api.crud.crud_bank import (
     create_transaction,
     get_user_bank_accounts,
     update_last_synced,
+    get_bank_account_by_account_id,
+    get_transactions_by_bank_account
 )
 
 

@@ -406,6 +406,36 @@ def get_transaction_by_transaction_id(db: Session, transaction_id: str) -> Optio
     """
     return db.query(Transaction).filter(Transaction.transaction_id == transaction_id).first()
 
+def get_transactions_by_bank_account(
+    db: Session, bank_account_id: int, skip: int = 0, limit: int = 100
+) -> List[Transaction]:
+    """
+    Get transactions by bank account ID.
+    
+    Parameters:
+    -----------
+    db: Session
+        Database session
+    bank_account_id: int
+        Bank account ID
+    skip: int
+        Number of records to skip
+    limit: int
+        Maximum number of records to return
+        
+    Returns:
+    --------
+    List[Transaction]
+        List of transactions
+    """
+    return (
+        db.query(Transaction)
+        .filter(Transaction.bank_account_id == bank_account_id)
+        .order_by(Transaction.date.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
 
 def get_account_transactions(db: Session, account_id: int, skip: int = 0, limit: int = 100) -> List[Transaction]:
     """
