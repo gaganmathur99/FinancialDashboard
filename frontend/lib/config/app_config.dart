@@ -13,7 +13,7 @@ class AppConfig {
   static const String callbackEndpoint = '/auth/callback';
   
   // Bank endpoints
-  static const String bankAuthLinkEndpoint = '/auth/login';
+  static const String bankAuthLinkEndpoint = '/auth/truelayer/authorize';
   static const String bankAccountsEndpoint = '/accounts';
   static const String bankTransactionsEndpoint = '/transactions';
   static const String bankSyncEndpoint = '/accounts/sync';
@@ -46,5 +46,5 @@ class AppConfig {
   static const int defaultPageSize = 20;
   
   // TrueLayer Configuration
-  static const String trueLayerRedirectUri = 'https://console.truelayer.com/redirect-page';
+  static const String trueLayerRedirectUri = 'http://localhost:8000/api/v1/auth/truelayer/callback';
 }

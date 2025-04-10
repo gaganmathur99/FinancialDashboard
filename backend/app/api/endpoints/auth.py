@@ -67,8 +67,15 @@ def login_access_token(
         subject=user.id, expires_delta=access_token_expires
     )
     
+    # Create refresh token with longer expiry
+    refresh_token_expires = timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+    refresh_token = create_access_token(
+        subject=user.id, expires_delta=refresh_token_expires
+    )
+    
     return {
         "access_token": access_token,
+        "refresh_token": refresh_token,
         "token_type": "bearer"
     }
 
@@ -113,6 +120,7 @@ def authorize_truelayer(
     """
     Get a TrueLayer authorization URL for the user to connect their bank account.
     """
+    print(f"User: {current_user}")
     # Generate a state parameter to verify the callback
     state = str(uuid.uuid4())
     

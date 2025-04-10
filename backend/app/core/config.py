@@ -14,14 +14,16 @@ class Settings(BaseSettings):
     SECRET_KEY: str = secrets.token_urlsafe(32)
     ENCRYPTION_KEY: str = secrets.token_urlsafe(24)
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
-    
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 30  # 30 days
+
+
     # Backend URL
     SERVER_NAME: str = "localhost"
     SERVER_HOST: Any = "localhost"
     SERVER_PORT: int = 8000
     
     # Debug mode
-    DEBUG: bool = False
+    DEBUG: bool = True
     
     
     # Database
@@ -30,8 +32,9 @@ class Settings(BaseSettings):
     # TrueLayer configuration
     TRUELAYER_CLIENT_ID: Optional[str] = None
     TRUELAYER_CLIENT_SECRET: Optional[str] = None
-    TRUELAYER_REDIRECT_URI: str = "https://console.truelayer.com/redirect-page"
+    TRUELAYER_REDIRECT_URI: str = "http://localhost:8000/api/v1/auth/truelayer/callback"
     TRUELAYER_PROVIDERS: str = "uk-ob-all uk-oauth-all"
+    SCOPES: str = "info accounts balance transactions offline_access"
     
     # Plaid configuration 
     PLAID_CLIENT_ID: Optional[str] = None

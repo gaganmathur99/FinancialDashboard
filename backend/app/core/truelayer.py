@@ -3,7 +3,7 @@ import json
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
 import pandas as pd
-
+import requests, urllib.parse
 from backend.app.core.config import settings
 
 # TrueLayer API endpoints
@@ -29,17 +29,14 @@ def create_auth_link(state: str) -> str:
     params = {
         "response_type": "code",
         "client_id": settings.TRUELAYER_CLIENT_ID,
-        "scope": "info accounts balance transactions cards",
+        "scope": settings.SCOPES,
         "redirect_uri": settings.TRUELAYER_REDIRECT_URI,
         "providers": settings.TRUELAYER_PROVIDERS,
         "state": state
     }
     
-    # Convert the parameters to a query string
-    query_string = "&".join([f"{key}={value}" for key, value in params.items()])
-    
     # Create the authentication URL
-    auth_url = f"{AUTH_URL}/?{query_string}"
+    auth_url = f"{AUTH_URL}?{urllib.parse.urlencode(params)}"
     
     return auth_url
 

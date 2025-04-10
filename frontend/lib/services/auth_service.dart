@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:developer';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/models.dart';
@@ -52,6 +53,7 @@ class AuthService extends ChangeNotifier {
         },
         requiresAuth: false,
       );
+      log('Login response: ${response.body}');
       if (_apiService.isSuccessful(response)) {
         final data = _apiService.parseResponse(response);
         

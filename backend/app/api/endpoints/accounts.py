@@ -21,22 +21,23 @@ from backend.app.schemas.bank import (
     Transaction as TransactionSchema
 )
 from backend.app.crud import (
-    get_bank_account,
     get_bank_account_by_account_id,
-    get_bank_accounts_by_user,
-    get_active_bank_accounts_by_user,
-    create_bank_account,
-    update_bank_account,
-    update_bank_account_tokens,
-    get_access_token,
-    get_refresh_token,
-    get_transaction,
-    get_transaction_by_transaction_id,
-    get_transactions_by_bank_account,
-    get_transactions_by_user,
-    create_transaction,
-    update_transaction,
 )
+
+from backend.app.crud.bank import (
+    get_transactions_by_bank_account,
+)
+
+from backend.app.api.crud.crud_bank import (
+    get_bank_account_by_account_id,
+    get_decrypted_refresh_token,
+    update_bank_account_tokens,
+    get_decrypted_access_token,
+    create_transaction,
+    get_user_bank_accounts,
+    update_last_synced,
+)
+
 
 router = APIRouter()
 
@@ -51,7 +52,7 @@ def read_bank_accounts(
     """
     Get all bank accounts for the current user.
     """
-    bank_accounts = get_bank_accounts_by_user_id(
+    bank_accounts = get_user_bank_accounts(
         db=db, user_id=current_user.id, skip=skip, limit=limit
     )
     return bank_accounts
@@ -67,7 +68,7 @@ def read_bank_account(
     """
     Get a specific bank account by ID.
     """
-    bank_account = get_bank_account_by_id(db=db, account_id=account_id)
+    bank_account = get_bank_account_by_account_id(db=db, account_id=account_id)
     if not bank_account:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -96,7 +97,7 @@ def read_transactions(
     If sync=True, it will fetch the latest transactions from TrueLayer.
     """
     # Get the bank account
-    bank_account = get_bank_account_by_id(db=db, account_id=account_id)
+    bank_account = get_bank_account_by_account_id(db=db, account_id=account_id)
     if not bank_account:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -111,7 +112,7 @@ def read_transactions(
         # Check if the access token is still valid
         if bank_account.token_expires_at and bank_account.token_expires_at < datetime.utcnow():
             # Refresh the access token
-            refresh_token = get_decrypted_refresh_token(bank_account)
+            refresh_token = get_decrypted_refresh_token(db=db, bank_account_id=bank_account.account_id)
             token_response = refresh_access_token(refresh_token)
             
             # Check if the token refresh was successful
@@ -135,7 +136,7 @@ def read_transactions(
             )
         else:
             # Use the existing access token
-            access_token = get_decrypted_access_token(bank_account)
+            access_token = get_decrypted_access_token(db=db, bank_account_id=bank_account.account_id)
         
         # Get transactions from TrueLayer
         from_date = None
@@ -166,10 +167,10 @@ def read_transactions(
                 create_transaction(db=db, obj_in=transaction_in)
         
         # Update the last synced timestamp
-        update_last_synced(db=db, db_obj=bank_account)
+        update_last_synced(db=db, db_bank_account=bank_account)
     
     # Get transactions from the database
-    return get_transactions_by_bank_account_id(
+    return get_transactions_by_bank_account(
         db=db, bank_account_id=bank_account.id, skip=skip, limit=limit
     )
 
@@ -185,7 +186,7 @@ def read_bank_account_balance(
     Get the balance for a specific bank account.
     """
     # Get the bank account
-    bank_account = get_bank_account_by_id(db=db, account_id=account_id)
+    bank_account = get_bank_account_by_account_id(db=db, account_id=account_id)
     if not bank_account:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

@@ -27,6 +27,32 @@ def get_bank_account(db: Session, bank_account_id: int) -> Optional[BankAccount]
     return db.query(BankAccount).filter(BankAccount.id == bank_account_id).first()
 
 
+def update_last_synced(db: Session, db_bank_account: BankAccount) -> BankAccount:
+    """
+    Update the last sync time for a bank account.
+
+    Parameters:
+    -----------
+    db: Session
+        Database session
+    db_bank_account: BankAccount
+        Existing bank account object
+
+    Returns:
+    --------
+    BankAccount
+        Updated bank account
+    """
+    # Update the last sync time
+    db_bank_account.last_synced = datetime.utcnow()
+
+    # Commit the changes
+    db.add(db_bank_account)
+    db.commit()
+    db.refresh(db_bank_account)
+
+    return db_bank_account
+
 def get_bank_account_by_account_id(db: Session, account_id: str) -> Optional[BankAccount]:
     """
     Get a bank account by account ID (from the provider).
@@ -249,6 +275,54 @@ def get_bank_account_tokens(db: Session, bank_account_id: int) -> Dict[str, str]
         "refresh_token": refresh_token
     }
 
+def get_decrypted_access_token(db: Session, bank_account_id: int) -> str:
+    """
+    Get the decrypted access token for a bank account.
+    
+    Parameters:
+    -----------
+    db: Session
+        Database session
+    bank_account_id: int
+        Bank account ID
+        
+    Returns:
+    --------
+    str
+        Decrypted access token or empty string if not found
+    """
+    # Get the bank account
+    db_bank_account = get_bank_account(db, bank_account_id=bank_account_id)
+    if not db_bank_account:
+        return ""
+    
+    # Decrypt the access token
+    return decrypt(db_bank_account.access_token)
+
+
+def get_decrypted_refresh_token(db: Session, bank_account_id: int) -> str:
+    """
+    Get the decrypted refresh token for a bank account.
+    
+    Parameters:
+    -----------
+    db: Session
+        Database session
+    bank_account_id: int
+        Bank account ID
+        
+    Returns:
+    --------
+    str
+        Decrypted refresh token or empty string if not found
+    """
+    # Get the bank account
+    db_bank_account = get_bank_account(db, bank_account_id=bank_account_id)
+    if not db_bank_account:
+        return ""
+    
+    # Decrypt the refresh token
+    return decrypt(db_bank_account.refresh_token)
 
 def update_bank_account_tokens(db: Session, bank_account_id: int, access_token: str, refresh_token: str, token_expiry: Optional[datetime] = None) -> Optional[BankAccount]:
     """

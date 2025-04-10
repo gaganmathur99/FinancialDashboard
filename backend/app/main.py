@@ -8,6 +8,9 @@ from backend.app.api.api import api_router
 from backend.app.core.config import settings
 
 # Create tables if they don't exist
+# Note: This should be done only once, ideally in a separate migration script.
+# This is a simplified example. In production, you should use a migration tool like Alembic.
+# to manage database schema changes.
 Base.metadata.create_all(bind=engine)
 
 # Initialize FastAPI app
